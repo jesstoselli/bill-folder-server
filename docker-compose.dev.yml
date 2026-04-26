@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: billfolder-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: billfolder
+      POSTGRES_USER: billfolder
+      POSTGRES_PASSWORD: billfolder_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      # Schema é aplicado AUTOMATICAMENTE quando o volume está vazio
+      # (primeira boot). Pra forçar reaplicar: docker compose down -v && up -d
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billfolder -d billfolder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_dev_data:
+    name: billfolder_postgres_dev_data

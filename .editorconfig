@@ -123,6 +123,10 @@ dotnet_naming_symbols.public_members.applicable_accessibilities = public,interna
 # CA2007: Do not directly await a Task without ConfigureAwait (não fazemos library, fazemos app)
 dotnet_diagnostic.CA2007.severity = none
 
+# MA0004: Use ConfigureAwait (Meziantou equivalent of CA2007).
+# ASP.NET Core não tem SynchronizationContext, então ConfigureAwait é noise.
+dotnet_diagnostic.MA0004.severity = none
+
 # MA0048: File name should match type name (já fazemos isso, ferramenta dá falso positivo)
 dotnet_diagnostic.MA0048.severity = none
 
@@ -154,3 +158,20 @@ dotnet_diagnostic.VSTHRD200.severity = none
 
 # Permite [Fact] em métodos não-async sem reclamar
 dotnet_diagnostic.MA0040.severity = none
+
+# ============================================================================
+# EF Core migrations — código auto-gerado, segue padrão da ferramenta
+# ============================================================================
+[**/Migrations/*.cs]
+
+# Block-scoped namespace é o que o EF Core gera por default
+dotnet_diagnostic.IDE0161.severity = none
+
+# Permite usings desnecessários (EF gera defensivamente)
+dotnet_diagnostic.IDE0005.severity = none
+
+# Permite valores não usados (Designer.cs tem patterns de attributes que disparam)
+dotnet_diagnostic.IDE0059.severity = none
+
+# Permite namespace antigo/longo
+dotnet_diagnostic.MA0047.severity = none

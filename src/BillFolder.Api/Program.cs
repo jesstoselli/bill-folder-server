@@ -21,6 +21,22 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(dataSource));
 
 var app = builder.Build();
-// Configure the HTTP request pipeline.
+
 app.UseHttpsRedirection();
+
+// ============================================================================
+// Endpoints
+// ============================================================================
+
+app.MapGet("/v1/health", async (ApplicationDbContext db, CancellationToken ct) =>
+{
+    var canConnect = await db.Database.CanConnectAsync(ct);
+    return Results.Ok(new
+    {
+        status = canConnect ? "ok" : "degraded",
+        version = "0.1.0",
+        timestamp = DateTime.UtcNow,
+    });
+});
+
 app.Run();
