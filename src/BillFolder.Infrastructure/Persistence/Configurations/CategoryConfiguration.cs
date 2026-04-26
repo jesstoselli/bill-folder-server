@@ -6,16 +6,16 @@ namespace BillFolder.Infrastructure.Persistence.Configurations;
 
 public class CategoryConfiguration : IEntityTypeConfiguration<Category>
 {
-    public void Configure(EntityTypeBuilder<Category> b)
+    public void Configure(EntityTypeBuilder<Category> builder)
     {
-        b.ToTable("categories");
-        b.HasKey(x => x.Id);
-        b.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
-        b.Property(x => x.Key).HasColumnName("key").IsRequired();
-        b.Property(x => x.NamePt).HasColumnName("name_pt").IsRequired();
-        b.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(false);
-        b.Property(x => x.DisplayOrder).HasColumnName("display_order");
-        b.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
-        b.HasIndex(x => x.Key).IsUnique();
+        builder.ToTable("categories");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+        builder.Property(x => x.Key).HasColumnName("key").IsRequired();
+        builder.Property(x => x.NamePt).HasColumnName("name_pt").IsRequired();
+        builder.Property(x => x.IsSystem).HasColumnName("is_system").HasDefaultValue(false);
+        builder.Property(x => x.DisplayOrder).HasColumnName("display_order");
+        builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+        builder.HasIndex(x => x.Key).IsUnique();
     }
 }

@@ -16,10 +16,23 @@
     <!-- Trava na versão estável mais recente do C# (não no preview) -->
     <LangVersion>latest</LangVersion>
 
+    <!-- Análise de código (Roslyn analyzers built-in) -->
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
     <!-- Metadata padrão do assembly -->
     <Authors>Jess Toselli</Authors>
     <Company>BillFolder</Company>
     <Copyright>Copyright © Jess Toselli $([System.DateTime]::Now.ToString(yyyy))</Copyright>
   </PropertyGroup>
+
+  <!-- Analyzers aplicados a todos os projetos -->
+  <ItemGroup>
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.214">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
 </Project>

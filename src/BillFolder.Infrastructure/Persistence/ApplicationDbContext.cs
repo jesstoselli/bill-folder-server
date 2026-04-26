@@ -28,10 +28,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<SavingsTransaction> SavingsTransactions => Set<SavingsTransaction>();
     public DbSet<CycleAdjustment> CycleAdjustments => Set<CycleAdjustment>();
 
-    protected override void OnModelCreating(ModelBuilder mb)
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Carrega todas as IEntityTypeConfiguration<> do assembly
-        mb.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
         // Mapeia ENUMs do Postgres
         // Os labels do Postgres são derivados automaticamente dos valores do enum C#
@@ -39,11 +39,11 @@ public class ApplicationDbContext : DbContext
         //   IncomeOriginType.Work       -> 'work'
         //   SavingsTransactionType.TransferOut -> 'transfer_out'
         //   IncomeStatus.NotOccurred    -> 'not_occurred'
-        mb.HasPostgresEnum<IncomeOriginType>("public", "income_origin_type");
-        mb.HasPostgresEnum<IncomeStatus>("public", "income_status");
-        mb.HasPostgresEnum<ExpenseStatus>("public", "expense_status");
-        mb.HasPostgresEnum<CardStatementStatus>("public", "card_statement_status");
-        mb.HasPostgresEnum<SavingsTransactionType>("public", "savings_transaction_type");
-        mb.HasPostgresEnum<CycleAdjustmentType>("public", "cycle_adjustment_type");
+        modelBuilder.HasPostgresEnum<IncomeOriginType>("public", "income_origin_type");
+        modelBuilder.HasPostgresEnum<IncomeStatus>("public", "income_status");
+        modelBuilder.HasPostgresEnum<ExpenseStatus>("public", "expense_status");
+        modelBuilder.HasPostgresEnum<CardStatementStatus>("public", "card_statement_status");
+        modelBuilder.HasPostgresEnum<SavingsTransactionType>("public", "savings_transaction_type");
+        modelBuilder.HasPostgresEnum<CycleAdjustmentType>("public", "cycle_adjustment_type");
     }
 }
