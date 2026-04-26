@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    Defaults aplicados a TODOS os projetos do repo (BillFolder.sln).
+    Cada .csproj individual pode sobrescrever, mas a ideia é que não precise.
+  -->
+
+  <PropertyGroup>
+    <!-- Warnings = bugs em treinamento. Build falha se sobrar warning. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- C# moderno: nullable references obrigatórias + global usings dos templates -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Trava na versão estável mais recente do C# (não no preview) -->
+    <LangVersion>latest</LangVersion>
+
+    <!-- Metadata padrão do assembly -->
+    <Authors>Jess Toselli</Authors>
+    <Company>BillFolder</Company>
+    <Copyright>Copyright © Jess Toselli $([System.DateTime]::Now.ToString(yyyy))</Copyright>
+  </PropertyGroup>
+
+</Project>

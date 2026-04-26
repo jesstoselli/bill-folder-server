@@ -1,34 +1,26 @@
+using BillFolder.Domain.Enums;
+using BillFolder.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+var connectionString = builder.Configuration.GetConnectionString("Postgres")
+    ?? throw new InvalidOperationException("Connection string 'Postgres' not configured");
+
+var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+dataSourceBuilder.MapEnum<IncomeOriginType>("income_origin_type");
+dataSourceBuilder.MapEnum<IncomeStatus>("income_status");
+dataSourceBuilder.MapEnum<ExpenseStatus>("expense_status");
+dataSourceBuilder.MapEnum<CardStatementStatus>("card_statement_status");
+dataSourceBuilder.MapEnum<SavingsTransactionType>("savings_transaction_type");
+dataSourceBuilder.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
+var dataSource = dataSourceBuilder.Build();
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(dataSource));
 
 var app = builder.Build();
-
 // Configure the HTTP request pipeline.
-
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-});
-
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
