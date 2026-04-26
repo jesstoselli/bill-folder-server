@@ -22,7 +22,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
+// TLS termination é feita pelo nginx em produção (e pelo Kestrel em dev).
+// API em si só escuta HTTP — não precisa de UseHttpsRedirection.
 
 // ============================================================================
 // Endpoints
