@@ -35,7 +35,7 @@ app.MapGet("/v1/health", async (ApplicationDbContext db, CancellationToken ct) =
     return Results.Ok(new
     {
         status = canConnect ? "ok" : "degraded",
-        version = "0.1.0",
+        version = "0.1.1",
         timestamp = DateTime.UtcNow,
     });
 });
