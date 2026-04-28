@@ -1,5 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using BillFolder.Api.Extensions;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.Dtos.Auth;
 using Microsoft.EntityFrameworkCore;
@@ -19,9 +19,7 @@ public static class UsersEndpoints
             IApplicationDbContext db,
             CancellationToken ct) =>
         {
-            // Lê o claim `sub` do JWT (que é o userId)
-            var sub = principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
-            if (!Guid.TryParse(sub, out var userId))
+            if (!principal.TryGetUserId(out var userId))
             {
                 return Results.Unauthorized();
             }

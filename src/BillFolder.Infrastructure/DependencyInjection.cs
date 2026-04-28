@@ -1,5 +1,6 @@
 using BillFolder.Application.Abstractions.Auth;
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
 using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
@@ -53,8 +54,10 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<CheckingAccountsService>();
 
         // ---- FluentValidation ----
+        // Discovery automático no assembly inteiro do Application
         services.AddValidatorsFromAssemblyContaining<SignupRequestValidator>();
 
         return services;

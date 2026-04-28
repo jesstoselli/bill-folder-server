@@ -66,5 +66,6 @@ app.MapGet("/v1/health", async (ApplicationDbContext db, CancellationToken ct) =
 app.MapAuthEndpoints();
 app.MapUsersEndpoints();
 app.MapCategoriesEndpoints();
+app.MapCheckingAccountsEndpoints();
 
 app.Run();
