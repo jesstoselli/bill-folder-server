@@ -79,5 +79,7 @@ app.MapCheckingAccountsEndpoints();
 app.MapCyclesEndpoints();
 app.MapDailyExpensesEndpoints();
 app.MapExpensesEndpoints();
+app.MapIncomeSourcesEndpoints();
+app.MapIncomeEntriesEndpoints();
 
 app.Run();

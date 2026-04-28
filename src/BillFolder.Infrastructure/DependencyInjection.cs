@@ -5,6 +5,7 @@ using BillFolder.Application.UseCases.Auth;
 using BillFolder.Application.UseCases.Cycles;
 using BillFolder.Application.UseCases.DailyExpenses;
 using BillFolder.Application.UseCases.Expenses;
+using BillFolder.Application.UseCases.Incomes;
 using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
 using BillFolder.Infrastructure.Auth;
@@ -72,6 +73,8 @@ public static class DependencyInjection
         services.AddScoped<CyclesService>();
         services.AddScoped<DailyExpensesService>();
         services.AddScoped<ExpensesService>();
+        services.AddScoped<IncomeSourcesService>();
+        services.AddScoped<IncomeEntriesService>();
 
         // ---- FluentValidation ----
         // Discovery automático no assembly inteiro do Application
