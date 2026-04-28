@@ -1,29 +1,48 @@
-using BillFolder.Domain.Enums;
+using System.Text;
+using BillFolder.Api.Endpoints;
+using BillFolder.Infrastructure;
+using BillFolder.Infrastructure.Auth;
 using BillFolder.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("Postgres")
-    ?? throw new InvalidOperationException("Connection string 'Postgres' not configured");
+builder.Services.AddInfrastructure(builder.Configuration);
 
-var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-dataSourceBuilder.MapEnum<IncomeOriginType>("income_origin_type");
-dataSourceBuilder.MapEnum<IncomeStatus>("income_status");
-dataSourceBuilder.MapEnum<ExpenseStatus>("expense_status");
-dataSourceBuilder.MapEnum<CardStatementStatus>("card_statement_status");
-dataSourceBuilder.MapEnum<SavingsTransactionType>("savings_transaction_type");
-dataSourceBuilder.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
-var dataSource = dataSourceBuilder.Build();
+// ============================================================================
+// JWT Bearer authentication
+// ============================================================================
+var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
+var jwtOpts = jwtSection.Get<JwtOptions>()
+    ?? throw new InvalidOperationException("Jwt section is missing.");
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(dataSource));
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtOpts.Issuer,
+            ValidAudience = jwtOpts.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOpts.Key)),
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
 // TLS termination é feita pelo nginx em produção (e pelo Kestrel em dev).
 // API em si só escuta HTTP — não precisa de UseHttpsRedirection.
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // ============================================================================
 // Endpoints
@@ -39,5 +58,7 @@ app.MapGet("/v1/health", async (ApplicationDbContext db, CancellationToken ct) =
         timestamp = DateTime.UtcNow,
     });
 });
+
+app.MapAuthEndpoints();
 
 app.Run();

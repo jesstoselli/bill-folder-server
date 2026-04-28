@@ -1,10 +1,11 @@
+using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Domain.Entities;
 using BillFolder.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace BillFolder.Infrastructure.Persistence;
 
-public class ApplicationDbContext : DbContext
+public class ApplicationDbContext : DbContext, IApplicationDbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
