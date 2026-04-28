@@ -3,6 +3,7 @@ using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
 using BillFolder.Application.UseCases.DailyExpenses;
+using BillFolder.Application.UseCases.Expenses;
 using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
 using BillFolder.Infrastructure.Auth;
@@ -43,7 +44,18 @@ public static class DependencyInjection
 
         services.AddSingleton(dataSource);
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(dataSource));
+            options.UseNpgsql(dataSource, npgsql =>
+            {
+                // Os enums precisam ser registrados TAMBÉM no nível do EF Core provider,
+                // não só no DataSource. Sem isso, EF Core gera SQL passando inteiro pro
+                // ENUM postgres e dá erro "expression is of type integer".
+                npgsql.MapEnum<IncomeOriginType>("income_origin_type");
+                npgsql.MapEnum<IncomeStatus>("income_status");
+                npgsql.MapEnum<ExpenseStatus>("expense_status");
+                npgsql.MapEnum<CardStatementStatus>("card_statement_status");
+                npgsql.MapEnum<SavingsTransactionType>("savings_transaction_type");
+                npgsql.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
+            }));
 
         // Expor IApplicationDbContext apontando pra mesma instância scoped do DbContext
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
@@ -57,6 +69,7 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<CheckingAccountsService>();
         services.AddScoped<DailyExpensesService>();
+        services.AddScoped<ExpensesService>();
 
         // ---- FluentValidation ----
         // Discovery automático no assembly inteiro do Application

@@ -1,5 +1,4 @@
 using BillFolder.Domain.Entities;
-using BillFolder.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -18,7 +17,14 @@ public class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
         builder.Property(x => x.Label).HasColumnName("label").IsRequired();
         builder.Property(x => x.ExpectedAmount).HasColumnName("expected_amount").HasColumnType("numeric(12,2)");
         builder.Property(x => x.ActualAmount).HasColumnName("actual_amount").HasColumnType("numeric(12,2)");
-        builder.Property(x => x.Status).HasColumnName("status").HasDefaultValue(ExpenseStatus.Pending);
+        // HasColumnType é essencial: sem isso, EF Core trata enum como int32 e tenta
+        // INSERT '0' numa coluna postgres ENUM, falhando com type mismatch.
+        // Status default vive no schema do banco ('pending') — aqui não setamos
+        // HasDefaultValue porque isso disparava RETURNING status que tinha outro
+        // bug de leitura. Application sempre seta Status no Create explicitamente.
+        builder.Property(x => x.Status)
+            .HasColumnName("status")
+            .HasColumnType("expense_status");
         builder.Property(x => x.PaidDate).HasColumnName("paid_date");
         builder.Property(x => x.PaidFromAccountId).HasColumnName("paid_from_account_id");
         builder.Property(x => x.CategoryId).HasColumnName("category_id");

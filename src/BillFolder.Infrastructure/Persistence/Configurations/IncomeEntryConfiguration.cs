@@ -17,7 +17,9 @@ public class IncomeEntryConfiguration : IEntityTypeConfiguration<IncomeEntry>
         builder.Property(x => x.ActualAmount).HasColumnName("actual_amount").HasColumnType("numeric(12,2)");
         builder.Property(x => x.ExpectedDate).HasColumnName("expected_date");
         builder.Property(x => x.ActualDate).HasColumnName("actual_date");
-        builder.Property(x => x.Status).HasColumnName("status");
+        builder.Property(x => x.Status)
+            .HasColumnName("status")
+            .HasColumnType("income_status");
         builder.Property(x => x.Notes).HasColumnName("notes");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");

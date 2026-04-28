@@ -16,7 +16,9 @@ public class IncomeSourceConfiguration : IEntityTypeConfiguration<IncomeSource>
         builder.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(x => x.UserId).HasColumnName("user_id");
         builder.Property(x => x.Origin).HasColumnName("origin").IsRequired();
-        builder.Property(x => x.OriginType).HasColumnName("origin_type"); // mapeado como ENUM no DbContext
+        builder.Property(x => x.OriginType)
+            .HasColumnName("origin_type")
+            .HasColumnType("income_origin_type");
         builder.Property(x => x.DefaultAmount).HasColumnName("default_amount").HasColumnType("numeric(12,2)");
         builder.Property(x => x.ExpectedDay).HasColumnName("expected_day");
         builder.Property(x => x.StartDate).HasColumnName("start_date");

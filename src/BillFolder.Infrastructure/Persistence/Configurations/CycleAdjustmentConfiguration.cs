@@ -15,7 +15,9 @@ public class CycleAdjustmentConfiguration : IEntityTypeConfiguration<CycleAdjust
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(x => x.UserId).HasColumnName("user_id");
-        builder.Property(x => x.Type).HasColumnName("type");
+        builder.Property(x => x.Type)
+            .HasColumnName("type")
+            .HasColumnType("cycle_adjustment_type");
         builder.Property(x => x.Label).HasColumnName("label").IsRequired();
         builder.Property(x => x.Amount).HasColumnName("amount").HasColumnType("numeric(12,2)");
         builder.Property(x => x.Date).HasColumnName("date");

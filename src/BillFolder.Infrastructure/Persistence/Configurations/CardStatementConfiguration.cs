@@ -16,7 +16,9 @@ public class CardStatementConfiguration : IEntityTypeConfiguration<CardStatement
         builder.Property(x => x.PeriodStart).HasColumnName("period_start");
         builder.Property(x => x.PeriodEnd).HasColumnName("period_end");
         builder.Property(x => x.DueDate).HasColumnName("due_date");
-        builder.Property(x => x.Status).HasColumnName("status");
+        builder.Property(x => x.Status)
+            .HasColumnName("status")
+            .HasColumnType("card_statement_status");
         builder.Property(x => x.LinkedExpenseId).HasColumnName("linked_expense_id");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");

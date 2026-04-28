@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using BillFolder.Api.Endpoints;
 using BillFolder.Infrastructure;
 using BillFolder.Infrastructure.Auth;
@@ -10,6 +11,14 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// JSON: enums serializam como string camelCase ("pending", "paid", "overdue")
+// em vez de número (0/1/2). Configurável também na deserialização.
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(
+        new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase));
+});
 
 // ============================================================================
 // JWT Bearer authentication
@@ -68,5 +77,6 @@ app.MapUsersEndpoints();
 app.MapCategoriesEndpoints();
 app.MapCheckingAccountsEndpoints();
 app.MapDailyExpensesEndpoints();
+app.MapExpensesEndpoints();
 
 app.Run();

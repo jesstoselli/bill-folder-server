@@ -16,7 +16,9 @@ public class SavingsTransactionConfiguration : IEntityTypeConfiguration<SavingsT
         builder.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(x => x.UserId).HasColumnName("user_id");
         builder.Property(x => x.SavingsAccountId).HasColumnName("savings_account_id");
-        builder.Property(x => x.Type).HasColumnName("type");
+        builder.Property(x => x.Type)
+            .HasColumnName("type")
+            .HasColumnType("savings_transaction_type");
         builder.Property(x => x.Amount).HasColumnName("amount").HasColumnType("numeric(12,2)");
         builder.Property(x => x.Date).HasColumnName("date");
         builder.Property(x => x.Label).HasColumnName("label");
