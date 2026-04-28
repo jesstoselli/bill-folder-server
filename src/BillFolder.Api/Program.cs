@@ -22,6 +22,10 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Desliga o mapping legado de WS-Federation (sub → NameIdentifier).
+        // Mantém os nomes RFC 7519 originais (sub, email, jti, etc).
+        options.MapInboundClaims = false;
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -60,5 +64,7 @@ app.MapGet("/v1/health", async (ApplicationDbContext db, CancellationToken ct) =
 });
 
 app.MapAuthEndpoints();
+app.MapUsersEndpoints();
+app.MapCategoriesEndpoints();
 
 app.Run();
