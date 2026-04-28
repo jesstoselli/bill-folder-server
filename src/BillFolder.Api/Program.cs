@@ -85,5 +85,7 @@ app.MapExpensesEndpoints();
 app.MapHomeEndpoints();
 app.MapIncomeSourcesEndpoints();
 app.MapIncomeEntriesEndpoints();
+app.MapSavingsAccountsEndpoints();
+app.MapSavingsTransactionsEndpoints();
 
 app.Run();
