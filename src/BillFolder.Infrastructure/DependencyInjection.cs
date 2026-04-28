@@ -4,11 +4,13 @@ using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
 using BillFolder.Application.UseCases.Cards;
 using BillFolder.Application.UseCases.CreditCards;
+using BillFolder.Application.UseCases.CycleAdjustments;
 using BillFolder.Application.UseCases.Cycles;
 using BillFolder.Application.UseCases.DailyExpenses;
 using BillFolder.Application.UseCases.Expenses;
 using BillFolder.Application.UseCases.Home;
 using BillFolder.Application.UseCases.Incomes;
+using BillFolder.Application.UseCases.Recurrences;
 using BillFolder.Application.UseCases.Savings;
 using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
@@ -83,6 +85,10 @@ public static class DependencyInjection
         services.AddScoped<HomeService>();
         services.AddScoped<IncomeSourcesService>();
         services.AddScoped<IncomeEntriesService>();
+        services.AddScoped<ExpenseRecurrencesService>();
+        services.AddScoped<DailyExpenseRecurrencesService>();
+        services.AddScoped<CardEntryRecurrencesService>();
+        services.AddScoped<CycleAdjustmentsService>();
         services.AddScoped<SavingsAccountsService>();
         services.AddScoped<SavingsTransactionsService>();
 

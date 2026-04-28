@@ -85,6 +85,10 @@ app.MapExpensesEndpoints();
 app.MapHomeEndpoints();
 app.MapIncomeSourcesEndpoints();
 app.MapIncomeEntriesEndpoints();
+app.MapExpenseRecurrencesEndpoints();
+app.MapDailyExpenseRecurrencesEndpoints();
+app.MapCardEntryRecurrencesEndpoints();
+app.MapCycleAdjustmentsEndpoints();
 app.MapSavingsAccountsEndpoints();
 app.MapSavingsTransactionsEndpoints();
 
