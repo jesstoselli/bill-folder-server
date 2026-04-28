@@ -82,6 +82,7 @@ app.MapCreditCardAccountsEndpoints();
 app.MapCyclesEndpoints();
 app.MapDailyExpensesEndpoints();
 app.MapExpensesEndpoints();
+app.MapHomeEndpoints();
 app.MapIncomeSourcesEndpoints();
 app.MapIncomeEntriesEndpoints();
 

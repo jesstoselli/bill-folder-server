@@ -7,6 +7,7 @@ using BillFolder.Application.UseCases.CreditCards;
 using BillFolder.Application.UseCases.Cycles;
 using BillFolder.Application.UseCases.DailyExpenses;
 using BillFolder.Application.UseCases.Expenses;
+using BillFolder.Application.UseCases.Home;
 using BillFolder.Application.UseCases.Incomes;
 using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
@@ -78,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<CyclesService>();
         services.AddScoped<DailyExpensesService>();
         services.AddScoped<ExpensesService>();
+        services.AddScoped<HomeService>();
         services.AddScoped<IncomeSourcesService>();
         services.AddScoped<IncomeEntriesService>();
 
