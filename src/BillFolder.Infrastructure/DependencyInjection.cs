@@ -2,6 +2,7 @@ using BillFolder.Application.Abstractions.Auth;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
+using BillFolder.Application.UseCases.DailyExpenses;
 using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
 using BillFolder.Infrastructure.Auth;
@@ -55,6 +56,7 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddScoped<AuthService>();
         services.AddScoped<CheckingAccountsService>();
+        services.AddScoped<DailyExpensesService>();
 
         // ---- FluentValidation ----
         // Discovery automático no assembly inteiro do Application

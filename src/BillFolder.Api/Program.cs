@@ -67,5 +67,6 @@ app.MapAuthEndpoints();
 app.MapUsersEndpoints();
 app.MapCategoriesEndpoints();
 app.MapCheckingAccountsEndpoints();
+app.MapDailyExpensesEndpoints();
 
 app.Run();
