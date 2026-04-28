@@ -15,19 +15,25 @@ public class AuthService
     private readonly IJwtTokenService _jwt;
     private readonly IValidator<SignupRequest> _signupValidator;
     private readonly IValidator<LoginRequest> _loginValidator;
+    private readonly IValidator<RefreshTokenRequest> _refreshValidator;
+    private readonly IValidator<LogoutRequest> _logoutValidator;
 
     public AuthService(
         IApplicationDbContext db,
         IPasswordHasher passwordHasher,
         IJwtTokenService jwt,
         IValidator<SignupRequest> signupValidator,
-        IValidator<LoginRequest> loginValidator)
+        IValidator<LoginRequest> loginValidator,
+        IValidator<RefreshTokenRequest> refreshValidator,
+        IValidator<LogoutRequest> logoutValidator)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _jwt = jwt;
         _signupValidator = signupValidator;
         _loginValidator = loginValidator;
+        _refreshValidator = refreshValidator;
+        _logoutValidator = logoutValidator;
     }
 
     public async Task<OperationResult<AuthResponse>> SignupAsync(
@@ -115,6 +121,83 @@ public class AuthService
         await _db.SaveChangesAsync(ct);
 
         return OperationResult.Ok(response);
+    }
+
+    public async Task<OperationResult<AuthResponse>> RefreshAsync(
+        RefreshTokenRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await _refreshValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return OperationResult.Fail<AuthResponse>(
+                "validation_error",
+                validation.Errors[0].ErrorMessage);
+        }
+
+        // Hash o refresh token recebido pra comparar com o que está no banco
+        var tokenHash = _jwt.ComputeTokenHash(request.RefreshToken);
+        var now = DateTime.UtcNow;
+
+        var existing = await _db.RefreshTokens
+            .Include(rt => rt.User)
+            .FirstOrDefaultAsync(
+                rt => rt.TokenHash == tokenHash
+                    && rt.RevokedAt == null
+                    && rt.ExpiresAt > now,
+                ct);
+
+        if (existing is null)
+        {
+            return OperationResult.Fail<AuthResponse>(
+                "invalid_refresh_token",
+                "Refresh token inválido, revogado ou expirado.");
+        }
+
+        // ROTAÇÃO: revoga o refresh atual antes de gerar o novo par.
+        // Se um atacante tem cópia desse refresh, vai falhar no próximo refresh dele.
+        existing.RevokedAt = now;
+
+        var response = await GenerateAndPersistTokensAsync(existing.User, ct);
+
+        await _db.SaveChangesAsync(ct);
+
+        return OperationResult.Ok(response);
+    }
+
+    public async Task<OperationResult<bool>> LogoutAsync(
+        LogoutRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await _logoutValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return OperationResult.Fail<bool>(
+                "validation_error",
+                validation.Errors[0].ErrorMessage);
+        }
+
+        var tokenHash = _jwt.ComputeTokenHash(request.RefreshToken);
+        var now = DateTime.UtcNow;
+
+        // Idempotente: se o token não existe ou já foi revogado, retorna sucesso mesmo assim.
+        // Isso evita que um cliente fazendo retry receba 404 e fique confuso.
+        var existing = await _db.RefreshTokens
+            .FirstOrDefaultAsync(
+                rt => rt.TokenHash == tokenHash && rt.RevokedAt == null,
+                ct);
+
+        if (existing is not null)
+        {
+            existing.RevokedAt = now;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return OperationResult.Ok(true);
     }
 
     private async Task<AuthResponse> GenerateAndPersistTokensAsync(User user, CancellationToken ct)

@@ -28,6 +28,27 @@ public static class AuthEndpoints
             return ToHttpResult(result);
         });
 
+        group.MapPost("/refresh", async (
+            RefreshTokenRequest request,
+            AuthService auth,
+            CancellationToken ct) =>
+        {
+            var result = await auth.RefreshAsync(request, ct);
+            return ToHttpResult(result);
+        });
+
+        group.MapPost("/logout", async (
+            LogoutRequest request,
+            AuthService auth,
+            CancellationToken ct) =>
+        {
+            var result = await auth.LogoutAsync(request, ct);
+            // 204 No Content em sucesso (idempotente)
+            return result.IsSuccess
+                ? Results.NoContent()
+                : ToHttpResult(result);
+        });
+
         return app;
     }
 
@@ -43,6 +64,7 @@ public static class AuthEndpoints
             "validation_error"          => StatusCodes.Status400BadRequest,
             "email_already_registered"  => StatusCodes.Status409Conflict,
             "invalid_credentials"       => StatusCodes.Status401Unauthorized,
+            "invalid_refresh_token"     => StatusCodes.Status401Unauthorized,
             _                           => StatusCodes.Status400BadRequest,
         };
 

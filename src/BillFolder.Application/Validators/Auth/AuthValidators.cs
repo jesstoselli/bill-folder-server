@@ -35,3 +35,21 @@ public class LoginRequestValidator : AbstractValidator<LoginRequest>
             .NotEmpty().MaximumLength(128);
     }
 }
+
+public class RefreshTokenRequestValidator : AbstractValidator<RefreshTokenRequest>
+{
+    public RefreshTokenRequestValidator()
+    {
+        RuleFor(x => x.RefreshToken)
+            .NotEmpty().WithMessage("Refresh token é obrigatório.");
+    }
+}
+
+public class LogoutRequestValidator : AbstractValidator<LogoutRequest>
+{
+    public LogoutRequestValidator()
+    {
+        RuleFor(x => x.RefreshToken)
+            .NotEmpty().WithMessage("Refresh token é obrigatório.");
+    }
+}
