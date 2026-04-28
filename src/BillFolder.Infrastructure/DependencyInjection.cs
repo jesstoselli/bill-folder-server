@@ -2,6 +2,7 @@ using BillFolder.Application.Abstractions.Auth;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
+using BillFolder.Application.UseCases.CreditCards;
 using BillFolder.Application.UseCases.Cycles;
 using BillFolder.Application.UseCases.DailyExpenses;
 using BillFolder.Application.UseCases.Expenses;
@@ -70,6 +71,7 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddScoped<AuthService>();
         services.AddScoped<CheckingAccountsService>();
+        services.AddScoped<CreditCardAccountsService>();
         services.AddScoped<CyclesService>();
         services.AddScoped<DailyExpensesService>();
         services.AddScoped<ExpensesService>();

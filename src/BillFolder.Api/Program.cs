@@ -76,6 +76,7 @@ app.MapAuthEndpoints();
 app.MapUsersEndpoints();
 app.MapCategoriesEndpoints();
 app.MapCheckingAccountsEndpoints();
+app.MapCreditCardAccountsEndpoints();
 app.MapCyclesEndpoints();
 app.MapDailyExpensesEndpoints();
 app.MapExpensesEndpoints();
