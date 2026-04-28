@@ -27,4 +27,5 @@ public class User
     public ICollection<CardStatement> CardStatements { get; set; } = new List<CardStatement>();
     public ICollection<SavingsTransaction> SavingsTransactions { get; set; } = new List<SavingsTransaction>();
     public ICollection<CycleAdjustment> CycleAdjustments { get; set; } = new List<CycleAdjustment>();
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }

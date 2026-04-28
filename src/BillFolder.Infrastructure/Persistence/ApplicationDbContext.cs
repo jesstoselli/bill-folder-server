@@ -27,6 +27,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Installment> Installments => Set<Installment>();
     public DbSet<SavingsTransaction> SavingsTransactions => Set<SavingsTransaction>();
     public DbSet<CycleAdjustment> CycleAdjustments => Set<CycleAdjustment>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
