@@ -29,6 +29,7 @@ public interface IApplicationDbContext
     DbSet<SavingsTransaction> SavingsTransactions { get; }
     DbSet<CycleAdjustment> CycleAdjustments { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<PasswordResetRequest> PasswordResetRequests { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

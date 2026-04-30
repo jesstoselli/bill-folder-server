@@ -251,11 +251,6 @@ public class ExpensesService
 
     // ----- helpers -----
 
-    private static ExpenseStatus ComputeDisplayStatus(Expense expense, DateOnly today) =>
-        expense.Status == ExpenseStatus.Pending && expense.DueDate < today
-            ? ExpenseStatus.Overdue
-            : expense.Status;
-
     private static string? NormalizeOptional(string? value)
     {
         if (value is null)
@@ -273,7 +268,7 @@ public class ExpensesService
             e.Label,
             e.ExpectedAmount,
             e.ActualAmount,
-            ComputeDisplayStatus(e, today),
+            e.ComputeDisplayStatus(today),
             e.PaidDate,
             e.PaidFromAccountId,
             e.PaidFromAccount?.BankName,

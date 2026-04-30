@@ -49,6 +49,31 @@ public static class AuthEndpoints
                 : ToHttpResult(result);
         });
 
+        // Inicia fluxo de reset de senha. Sempre 200 (proteção contra
+        // enumeration). DevCode no body é populado apenas em dev sem
+        // IEmailSender configurado — facilita testar via curl.
+        group.MapPost("/forgot-password", async (
+            ForgotPasswordRequest request,
+            AuthService auth,
+            CancellationToken ct) =>
+        {
+            var result = await auth.ForgotPasswordAsync(request, ct);
+            return ToHttpResult(result);
+        });
+
+        // Conclui o reset. Valida código + email; em sucesso troca senha
+        // e revoga refresh tokens ativos do user.
+        group.MapPost("/reset-password", async (
+            ResetPasswordRequest request,
+            AuthService auth,
+            CancellationToken ct) =>
+        {
+            var result = await auth.ResetPasswordAsync(request, ct);
+            return result.IsSuccess
+                ? Results.NoContent()
+                : ToHttpResult(result);
+        });
+
         return app;
     }
 
@@ -65,6 +90,7 @@ public static class AuthEndpoints
             "email_already_registered"  => StatusCodes.Status409Conflict,
             "invalid_credentials"       => StatusCodes.Status401Unauthorized,
             "invalid_refresh_token"     => StatusCodes.Status401Unauthorized,
+            "invalid_reset_code"        => StatusCodes.Status400BadRequest,
             _                           => StatusCodes.Status400BadRequest,
         };
 

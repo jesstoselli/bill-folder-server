@@ -111,11 +111,13 @@ public class HomeService
                 e.Label,
                 e.DueDate,
                 e.ExpectedAmount,
-                ComputeExpenseDisplayStatus(e, today),
+                e.ComputeDisplayStatus(today),
                 e.Category.NamePt))
             .ToList();
 
         // 5. Faturas que vencem no ciclo
+        // Include CardEntry + Category pras installments porque vamos
+        // agrupar por categoria no breakdown abaixo.
         var statements = await _db.CardStatements
             .AsNoTracking()
             .Where(s => s.UserId == userId
@@ -123,6 +125,8 @@ public class HomeService
                      && s.DueDate <= cycle.EndDate)
             .Include(s => s.Card)
             .Include(s => s.Installments)
+                .ThenInclude(i => i.CardEntry)
+                    .ThenInclude(e => e.Category)
             .ToListAsync(ct);
 
         var expectedCardStatements = statements
@@ -141,17 +145,25 @@ public class HomeService
             .ToList();
 
         // 6. Daily expenses no ciclo
-        var dailyExpensesSpent = await _db.DailyExpenses
+        // Carrega a lista (não só a soma) pra reusar no breakdown por categoria.
+        var dailyExpenses = await _db.DailyExpenses
+            .AsNoTracking()
             .Where(d => d.UserId == userId
                      && d.Date >= cycle.StartDate
                      && d.Date <= cycle.EndDate)
-            .SumAsync(d => (decimal?)d.Amount, ct) ?? 0m;
+            .Include(d => d.Category)
+            .ToListAsync(ct);
+
+        var dailyExpensesSpent = dailyExpenses.Sum(d => d.Amount);
 
         // 7. Calcula remaining (o número grande do hero)
         var remaining = expectedIncome
                       - expectedExpenses
                       - expectedCardStatements
                       - dailyExpensesSpent;
+
+        // 8. Breakdown por categoria (alimenta o pie chart "onde meu dinheiro vai")
+        var categoryBreakdown = BuildCategoryBreakdown(expenses, dailyExpenses, statements);
 
         var response = new HomeResponse(
             Cycle: new HomeCycleDto(cycle.Id, cycle.StartDate, cycle.EndDate, cycle.Label),
@@ -167,13 +179,70 @@ public class HomeService
             IncomeBreakdown: incomeBreakdown,
             ExpenseBreakdown: expenseBreakdown,
             UpcomingExpenses: upcomingExpenses,
-            CardStatementsInCycle: cardStatementsInCycle);
+            CardStatementsInCycle: cardStatementsInCycle,
+            CategoryBreakdown: categoryBreakdown);
 
         return OperationResult.Ok(response);
     }
 
-    private static ExpenseStatus ComputeExpenseDisplayStatus(Expense e, DateOnly today) =>
-        e.Status == ExpenseStatus.Pending && e.DueDate < today
-            ? ExpenseStatus.Overdue
-            : e.Status;
+    /// <summary>
+    /// Agrega despesas + daily expenses + parcelas de fatura por categoria.
+    /// Retorna lista ordenada por valor desc.
+    ///
+    /// Convenção:
+    /// - Despesas tradicionais somam pelo `ExpectedAmount` (independente de
+    ///   estado pago/pending) — o ciclo é "olhada do mês inteiro", a categoria
+    ///   já tá comprometida.
+    /// - Daily expenses somam `Amount` (já é o real).
+    /// - Installments somam pelo valor da parcela; a categoria vem do
+    ///   CardEntry pai (cada CardEntry tem 1 categoria, todas as parcelas
+    ///   herdam dela).
+    /// </summary>
+    private static List<HomeCategoryBreakdownDto> BuildCategoryBreakdown(
+        List<Expense> expenses,
+        List<DailyExpense> dailyExpenses,
+        List<CardStatement> statements)
+    {
+        // Tupla: (categoryKey, namePt, amount). Agrupa primeiro pelo Id.
+        var aggregator = new Dictionary<Guid, (string Key, string NamePt, decimal Sum)>();
+
+        void Add(Category category, decimal amount)
+        {
+            if (aggregator.TryGetValue(category.Id, out var entry))
+            {
+                aggregator[category.Id] = (entry.Key, entry.NamePt, entry.Sum + amount);
+            }
+            else
+            {
+                aggregator[category.Id] = (category.Key, category.NamePt, amount);
+            }
+        }
+
+        foreach (var e in expenses)
+        {
+            Add(e.Category, e.ExpectedAmount);
+        }
+
+        foreach (var d in dailyExpenses)
+        {
+            Add(d.Category, d.Amount);
+        }
+
+        foreach (var statement in statements)
+        {
+            foreach (var installment in statement.Installments)
+            {
+                Add(installment.CardEntry.Category, installment.Amount);
+            }
+        }
+
+        return aggregator
+            .Select(kv => new HomeCategoryBreakdownDto(
+                CategoryId: kv.Key,
+                CategoryKey: kv.Value.Key,
+                CategoryName: kv.Value.NamePt,
+                Amount: kv.Value.Sum))
+            .OrderByDescending(c => c.Amount)
+            .ToList();
+    }
 }

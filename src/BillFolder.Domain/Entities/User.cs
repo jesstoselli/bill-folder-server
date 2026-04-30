@@ -28,4 +28,5 @@ public class User
     public ICollection<SavingsTransaction> SavingsTransactions { get; set; } = new List<SavingsTransaction>();
     public ICollection<CycleAdjustment> CycleAdjustments { get; set; } = new List<CycleAdjustment>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+    public ICollection<PasswordResetRequest> PasswordResetRequests { get; set; } = new List<PasswordResetRequest>();
 }

@@ -8,7 +8,20 @@ public sealed record HomeResponse(
     HomeIncomeBreakdownDto IncomeBreakdown,
     HomeExpenseBreakdownDto ExpenseBreakdown,
     IReadOnlyList<HomeUpcomingExpenseDto> UpcomingExpenses,
-    IReadOnlyList<HomeCardStatementDto> CardStatementsInCycle);
+    IReadOnlyList<HomeCardStatementDto> CardStatementsInCycle,
+    IReadOnlyList<HomeCategoryBreakdownDto> CategoryBreakdown);
+
+/// <summary>
+/// Soma agregada por categoria de tudo que passa pelo ciclo: despesas,
+/// despesas avulsas e parcelas de fatura cujo vencimento cai no período.
+/// Usado pelo pie chart "onde meu dinheiro vai" na Home.
+/// Ordenado por valor desc — front pode pegar top-N pra renderizar.
+/// </summary>
+public sealed record HomeCategoryBreakdownDto(
+    Guid CategoryId,
+    string CategoryKey,
+    string CategoryName,
+    decimal Amount);
 
 public sealed record HomeCycleDto(
     Guid Id,

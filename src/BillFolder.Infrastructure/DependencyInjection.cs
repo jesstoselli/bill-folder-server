@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Auth;
+using BillFolder.Application.Abstractions.Email;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
@@ -75,6 +76,13 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddScoped<AuthService>();
+
+        // ---- Email sender ----
+        // Fase A: NoOp por padrão. AuthService detecta pela flag IsConfigured
+        // e expõe DevCode na resposta de forgot-password pra testar via curl.
+        // Fase B substitui esse registration por um decisor: se Resend.ApiKey
+        // está configurado, usa ResendEmailSender; senão, mantém NoOp.
+        services.AddSingleton<IEmailSender, NoOpEmailSender>();
         services.AddScoped<CardEntriesService>();
         services.AddScoped<CardStatementsService>();
         services.AddScoped<CheckingAccountsService>();
