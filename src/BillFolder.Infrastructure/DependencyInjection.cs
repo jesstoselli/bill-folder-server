@@ -1,6 +1,7 @@
 using BillFolder.Application.Abstractions.Auth;
 using BillFolder.Application.Abstractions.Email;
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Infrastructure.Email;
 using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
 using BillFolder.Application.UseCases.Cards;
@@ -78,11 +79,26 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
 
         // ---- Email sender ----
-        // Fase A: NoOp por padrão. AuthService detecta pela flag IsConfigured
-        // e expõe DevCode na resposta de forgot-password pra testar via curl.
-        // Fase B substitui esse registration por um decisor: se Resend.ApiKey
-        // está configurado, usa ResendEmailSender; senão, mantém NoOp.
-        services.AddSingleton<IEmailSender, NoOpEmailSender>();
+        // Decide a impl em tempo de DI baseado em config:
+        //   Resend:ApiKey preenchido → ResendEmailSender (chama API Resend)
+        //   ApiKey vazio → NoOpEmailSender (AuthService expõe DevCode na response)
+        //
+        // Em prod a key vem via env var Resend__ApiKey no docker-compose;
+        // em dev local fica vazia e o fluxo é testável via curl com DevCode.
+        services.Configure<ResendOptions>(configuration.GetSection(ResendOptions.SectionName));
+        var resendApiKey = configuration[$"{ResendOptions.SectionName}:ApiKey"];
+
+        if (!string.IsNullOrWhiteSpace(resendApiKey))
+        {
+            // HttpClient nomeado/tipado: lifetime gerenciado pelo
+            // IHttpClientFactory (resolve socket exhaustion clássico do
+            // HttpClient compartilhado).
+            services.AddHttpClient<IEmailSender, ResendEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, NoOpEmailSender>();
+        }
         services.AddScoped<CardEntriesService>();
         services.AddScoped<CardStatementsService>();
         services.AddScoped<CheckingAccountsService>();
