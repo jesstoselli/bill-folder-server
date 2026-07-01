@@ -19,8 +19,13 @@ namespace BillFolder.Infrastructure.Email;
 /// IsConfigured = true sempre que esta impl é registrada. O DI só
 /// registra essa impl quando ResendOptions.ApiKey está preenchido;
 /// caso contrário cai no NoOpEmailSender (ver DependencyInjection).
+///
+/// A classe é `partial` pra permitir o source generator do
+/// [LoggerMessage] gerar os métodos de log otimizados na nested class
+/// Log — evita alocações do params object[] das overloads clássicas
+/// (LogWarning, LogInformation), que o analyzer Meziantou/CA1848 pede.
 /// </summary>
-public sealed class ResendEmailSender : IEmailSender
+public sealed partial class ResendEmailSender : IEmailSender
 {
     private const string ResendApiUrl = "https://api.resend.com/emails";
 
@@ -66,19 +71,12 @@ public sealed class ResendEmailSender : IEmailSender
             // O caller (AuthService) trata exceção como swallow pra não
             // vazar status do email na response — proteção contra
             // user enumeration em forgot-password.
-            var statusCode = (int)response.StatusCode;
-            _logger.LogWarning(
-                "Resend API returned non-success status {StatusCode} when sending to {ToEmail}",
-                statusCode,
-                toEmail);
+            Log.ResendNonSuccessStatus(_logger, (int)response.StatusCode, toEmail);
 
             response.EnsureSuccessStatusCode(); // dispara exceção pra caller
         }
 
-        _logger.LogInformation(
-            "Sent email via Resend to {ToEmail} (subject: {Subject})",
-            toEmail,
-            subject);
+        Log.ResendSent(_logger, toEmail, subject);
     }
 
     /// <summary>
@@ -91,4 +89,25 @@ public sealed class ResendEmailSender : IEmailSender
         [property: JsonPropertyName("to")] IReadOnlyCollection<string> To,
         [property: JsonPropertyName("subject")] string Subject,
         [property: JsonPropertyName("text")] string Text);
+
+    /// <summary>
+    /// Métodos de log gerados por source generator via [LoggerMessage].
+    /// Diferente das extensions clássicas (LogWarning, LogInformation),
+    /// não alocam params object[] em cada call e só avaliam os args se
+    /// o log level tá habilitado — resolve CA1848 e CA1873 do analyzer.
+    /// </summary>
+    private static partial class Log
+    {
+        [LoggerMessage(
+            EventId = 1,
+            Level = LogLevel.Warning,
+            Message = "Resend API returned non-success status {StatusCode} when sending to {ToEmail}")]
+        public static partial void ResendNonSuccessStatus(ILogger logger, int statusCode, string toEmail);
+
+        [LoggerMessage(
+            EventId = 2,
+            Level = LogLevel.Information,
+            Message = "Sent email via Resend to {ToEmail} (subject: {Subject})")]
+        public static partial void ResendSent(ILogger logger, string toEmail, string subject);
+    }
 }
