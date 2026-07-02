@@ -81,6 +81,14 @@ public class IncomeSourcesService
         };
 
         _db.IncomeSources.Add(source);
+
+        // Materializa entries pros ciclos abertos que a source cobre — sem
+        // isso, a source ficava só como template não-usado (bug F8: fonte
+        // recorrente não aparecia nos "recebimentos esperados no ciclo").
+        // A expansão apenas adiciona ao change tracker; SaveChanges abaixo
+        // commita source + entries na mesma transação.
+        await IncomeSourceExpansion.ExpandForSourceAsync(_db, source, ct);
+
         await _db.SaveChangesAsync(ct);
 
         return OperationResult.Ok(MapToResponse(source));

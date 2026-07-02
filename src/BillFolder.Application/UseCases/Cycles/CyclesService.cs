@@ -1,6 +1,7 @@
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cycles;
+using BillFolder.Application.UseCases.Incomes;
 using BillFolder.Domain.Entities;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -120,6 +121,13 @@ public class CyclesService
         };
 
         _db.Cycles.Add(cycle);
+
+        // Materializa entries de todas as sources ativas cujo range cobre o
+        // novo ciclo — resolve o caso "source cadastrada antes de existir
+        // ciclo". Complementa IncomeSourcesService que resolve o inverso
+        // (source cadastrada depois do ciclo).
+        await IncomeSourceExpansion.ExpandForCycleAsync(_db, cycle, ct);
+
         await _db.SaveChangesAsync(ct);
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
