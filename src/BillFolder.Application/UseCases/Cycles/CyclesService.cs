@@ -1,4 +1,3 @@
-using System.Globalization;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cycles;
@@ -18,7 +17,19 @@ public class CyclesService
     /// </summary>
     private const int RollingWindowSize = 12;
 
-    private static readonly CultureInfo PtBrCulture = new("pt-BR");
+    /// <summary>
+    /// Nomes dos meses em pt-BR minúsculo pra montagem de labels no formato
+    /// "mes/ano". Lookup literal em vez de CultureInfo("pt-BR") porque o
+    /// container Alpine da runtime image .NET roda em globalization-invariant
+    /// mode por default — CultureInfo com nome específico dispara
+    /// CultureNotFoundException. Manter hard-coded é mais barato e evita
+    /// dep de ICU no runtime.
+    /// </summary>
+    private static readonly string[] PtBrMonthsLowercase = new[]
+    {
+        "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+        "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+    };
 
     private readonly IApplicationDbContext _db;
     private readonly IValidator<CreateCycleRequest> _createValidator;
@@ -295,11 +306,8 @@ public class CyclesService
     /// convenção do defaultLabel() no CreateCycleViewModel do app.
     /// Ex: "julho/2026".
     /// </summary>
-    private static string GenerateLabel(DateOnly cycleStart)
-    {
-        var monthName = PtBrCulture.DateTimeFormat.GetMonthName(cycleStart.Month);
-        return $"{PtBrCulture.TextInfo.ToLower(monthName)}/{cycleStart.Year}";
-    }
+    private static string GenerateLabel(DateOnly cycleStart) =>
+        $"{PtBrMonthsLowercase[cycleStart.Month - 1]}/{cycleStart.Year}";
 
     public async Task<OperationResult<CycleResponse>> UpdateAsync(
         Guid userId, Guid id, UpdateCycleRequest request, CancellationToken ct = default)
