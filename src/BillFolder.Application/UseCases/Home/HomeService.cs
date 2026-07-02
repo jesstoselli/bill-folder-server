@@ -157,9 +157,29 @@ public class HomeService
         var dailyExpensesSpent = dailyExpenses.Sum(d => d.Amount);
 
         // 7. Calcula remaining (o número grande do hero)
-        var remaining = expectedIncome
+        //
+        // Semântica: "quanto de saldo resta ao fim do ciclo, considerando
+        // tudo que já rolou e tudo que ainda tem que acontecer". Fórmula:
+        //
+        //   remaining = saldo de partida das contas
+        //             + tudo que entra no ciclo (receitas esperadas + recebidas + em atraso)
+        //             - tudo que sai no ciclo (despesas pagas + pendentes + faturas + avulsas)
+        //
+        // Bugs anteriores da fórmula:
+        //   - Não incluía checkingTotal → dava negativo mesmo com dinheiro na conta.
+        //   - Só somava expectedExpenses (filtra Status != Paid) e ignorava
+        //     paidExpenses — expense paga "sumia" do cálculo, mesmo tendo
+        //     saído da conta na vida real.
+        //   - expectedCardStatements filtra faturas não-pagas — faturas
+        //     pagas sumiam pelo mesmo motivo. Aqui somamos TODAS as
+        //     installments do ciclo (pagas ou não).
+        var totalCardCharges = statements.Sum(s => s.Installments.Sum(i => i.Amount));
+
+        var remaining = checkingTotal
+                      + expectedIncome
+                      - paidExpenses
                       - expectedExpenses
-                      - expectedCardStatements
+                      - totalCardCharges
                       - dailyExpensesSpent;
 
         // 8. Breakdown por categoria (alimenta o pie chart "onde meu dinheiro vai")
