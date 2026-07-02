@@ -1,3 +1,4 @@
+using System.Globalization;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cycles;
@@ -10,6 +11,15 @@ namespace BillFolder.Application.UseCases.Cycles;
 
 public class CyclesService
 {
+    /// <summary>
+    /// Quantos ciclos gerar automaticamente à frente do ciclo que o user
+    /// acabou de criar (ou do último existente, no safety-net). 12 = 1 ano
+    /// de janela pra planejamento sem que o user precise criar manualmente.
+    /// </summary>
+    private const int RollingWindowSize = 12;
+
+    private static readonly CultureInfo PtBrCulture = new("pt-BR");
+
     private readonly IApplicationDbContext _db;
     private readonly IValidator<CreateCycleRequest> _createValidator;
     private readonly IValidator<UpdateCycleRequest> _updateValidator;
@@ -63,6 +73,31 @@ public class CyclesService
                      && c.StartDate <= today
                      && c.EndDate >= today)
             .FirstOrDefaultAsync(ct);
+
+        if (current is null)
+        {
+            // Safety-net: se o user tem histórico mas a janela de 12
+            // ciclos gerados no last CreateAsync expirou (ficou meses
+            // sem abrir o app), gera outra janela e re-tenta. Zero UX
+            // visível — só destrava o app.
+            var lastCycle = await _db.Cycles
+                .Where(c => c.UserId == userId)
+                .OrderByDescending(c => c.EndDate)
+                .FirstOrDefaultAsync(ct);
+
+            if (lastCycle is not null && lastCycle.EndDate < today)
+            {
+                await GenerateForwardCyclesAsync(userId, lastCycle, RollingWindowSize, ct);
+                await _db.SaveChangesAsync(ct);
+
+                current = await _db.Cycles
+                    .AsNoTracking()
+                    .Where(c => c.UserId == userId
+                             && c.StartDate <= today
+                             && c.EndDate >= today)
+                    .FirstOrDefaultAsync(ct);
+            }
+        }
 
         return current is null
             ? OperationResult.Fail<CycleResponse>(
@@ -128,10 +163,109 @@ public class CyclesService
         // (source cadastrada depois do ciclo).
         await IncomeSourceExpansion.ExpandForCycleAsync(_db, cycle, ct);
 
+        // Rolling window: gera 11 ciclos consecutivos à frente pra o user
+        // ter 12 meses de janela sem precisar criar cada um manualmente. Se
+        // ele deixar o app parado por 12 meses, o safety-net do
+        // GetCurrentAsync gera outra janela.
+        await GenerateForwardCyclesAsync(userId, cycle, RollingWindowSize - 1, ct);
+
         await _db.SaveChangesAsync(ct);
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
         return OperationResult.Ok(MapToResponse(cycle, today));
+    }
+
+    // ========================================================================
+    // Rolling window helpers
+    // ========================================================================
+
+    /// <summary>
+    /// Gera <paramref name="count"/> ciclos consecutivos à frente do
+    /// <paramref name="seed"/>. Cada um é marcado com
+    /// IsRecurrenceGenerated=true (diferencia de ciclos criados
+    /// manualmente pelo user), e dispara ExpandForCycleAsync pra
+    /// materializar income entries das sources ativas.
+    ///
+    /// Idempotente: antes de criar cada ciclo, checa se já existe um com
+    /// aquela StartDate. Se sim, para a cadeia (assume que ciclos
+    /// posteriores já foram gerados numa execução anterior).
+    ///
+    /// Adiciona ao change tracker; caller é responsável pelo SaveChanges.
+    /// </summary>
+    private async Task<int> GenerateForwardCyclesAsync(
+        Guid userId,
+        Cycle seed,
+        int count,
+        CancellationToken ct)
+    {
+        var previous = seed;
+        var generated = 0;
+
+        for (var i = 0; i < count; i++)
+        {
+            var (nextStart, nextEnd) = ComputeNextCyclePeriod(previous);
+
+            // Idempotência: se já existe um ciclo com essa startDate, para.
+            // Também prevê race com o unique constraint (user_id, start_date).
+            var exists = await _db.Cycles.AnyAsync(
+                c => c.UserId == userId && c.StartDate == nextStart, ct);
+            if (exists)
+            {
+                break;
+            }
+
+            var next = new Cycle
+            {
+                Id = Guid.CreateVersion7(),
+                UserId = userId,
+                StartDate = nextStart,
+                EndDate = nextEnd,
+                Label = GenerateLabel(nextStart),
+                IsRecurrenceGenerated = true,
+            };
+            _db.Cycles.Add(next);
+
+            await IncomeSourceExpansion.ExpandForCycleAsync(_db, next, ct);
+
+            previous = next;
+            generated++;
+        }
+
+        return generated;
+    }
+
+    /// <summary>
+    /// Regra de "próximo ciclo": start = end anterior + 1 dia. Pra o end,
+    /// detecta o padrão "mês calendário" (1 ao último do mês) e replica.
+    /// Se for custom (ex: 25→25), mantém mesma largura via +1 mês -1 dia.
+    /// </summary>
+    private static (DateOnly nextStart, DateOnly nextEnd) ComputeNextCyclePeriod(Cycle previous)
+    {
+        var nextStart = previous.EndDate.AddDays(1);
+
+        var isCalendarMonth = previous.StartDate.Day == 1
+            && previous.EndDate.Day == DateTime.DaysInMonth(
+                previous.EndDate.Year, previous.EndDate.Month);
+
+        var nextEnd = isCalendarMonth
+            ? new DateOnly(
+                nextStart.Year,
+                nextStart.Month,
+                DateTime.DaysInMonth(nextStart.Year, nextStart.Month))
+            : nextStart.AddMonths(1).AddDays(-1);
+
+        return (nextStart, nextEnd);
+    }
+
+    /// <summary>
+    /// Label default no formato "mes/ano" em pt-BR minúsculo — igual à
+    /// convenção do defaultLabel() no CreateCycleViewModel do app.
+    /// Ex: "julho/2026".
+    /// </summary>
+    private static string GenerateLabel(DateOnly cycleStart)
+    {
+        var monthName = PtBrCulture.DateTimeFormat.GetMonthName(cycleStart.Month);
+        return $"{PtBrCulture.TextInfo.ToLower(monthName)}/{cycleStart.Year}";
     }
 
     public async Task<OperationResult<CycleResponse>> UpdateAsync(
