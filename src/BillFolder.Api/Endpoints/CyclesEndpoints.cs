@@ -104,6 +104,22 @@ public static class CyclesEndpoints
                 : ToHttpResult(result);
         });
 
+        // One-shot pra estender a rolling window pra users que criaram
+        // ciclos ANTES do CreateAsync ganhar auto-generation. Idempotente —
+        // se já tem 12 ciclos após o último, retorna generatedCount=0.
+        group.MapPost("/backfill-window", async (
+            ClaimsPrincipal principal,
+            CyclesService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            var result = await service.BackfillWindowAsync(userId, ct);
+            return ToHttpResult(result);
+        });
+
         return app;
     }
 
@@ -119,6 +135,7 @@ public static class CyclesEndpoints
             "validation_error"      => StatusCodes.Status400BadRequest,
             "duplicate_start_date"  => StatusCodes.Status409Conflict,
             "no_current_cycle"      => StatusCodes.Status404NotFound,
+            "no_seed_cycle"         => StatusCodes.Status400BadRequest,
             "not_found"             => StatusCodes.Status404NotFound,
             _                       => StatusCodes.Status400BadRequest,
         };

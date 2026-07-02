@@ -175,6 +175,39 @@ public class CyclesService
         return OperationResult.Ok(MapToResponse(cycle, today));
     }
 
+    /// <summary>
+    /// One-shot backfill: gera ciclos consecutivos à frente do último
+    /// existente do user até completar a rolling window de 12. Endpoint
+    /// dedicado pra users que já tinham ciclos criados antes do
+    /// CreateAsync ganhar auto-generation.
+    ///
+    /// Idempotente — se a janela já está completa (12 ciclos após o
+    /// último), retorna 0 sem alterar nada. Requer que o user tenha ao
+    /// menos 1 ciclo existente (senão retorna "no_seed_cycle" 400).
+    /// </summary>
+    public async Task<OperationResult<BackfillCyclesResponse>> BackfillWindowAsync(
+        Guid userId,
+        CancellationToken ct = default)
+    {
+        var lastCycle = await _db.Cycles
+            .Where(c => c.UserId == userId)
+            .OrderByDescending(c => c.EndDate)
+            .FirstOrDefaultAsync(ct);
+
+        if (lastCycle is null)
+        {
+            return OperationResult.Fail<BackfillCyclesResponse>(
+                "no_seed_cycle",
+                "Nenhum ciclo encontrado. Crie o primeiro ciclo manualmente antes de solicitar backfill.");
+        }
+
+        var generated = await GenerateForwardCyclesAsync(
+            userId, lastCycle, RollingWindowSize - 1, ct);
+        await _db.SaveChangesAsync(ct);
+
+        return OperationResult.Ok(new BackfillCyclesResponse(generated));
+    }
+
     // ========================================================================
     // Rolling window helpers
     // ========================================================================
