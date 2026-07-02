@@ -116,31 +116,57 @@ public class HomeService
             .ToList();
 
         // 5. Faturas que vencem no ciclo
-        // Include CardEntry + Category pras installments porque vamos
-        // agrupar por categoria no breakdown abaixo.
-        var statements = await _db.CardStatements
+        //
+        // Projetamos TUDO em SQL — inclusive Total e o breakdown por
+        // categoria de cada installment — em vez de fazer Include+Sum
+        // in-memory. Motivo: `.Include(collection)` + `.AsNoTracking()`
+        // em EF Core pode não popular a collection corretamente sob
+        // certos cenários (cartesian explosion sem identity resolution
+        // com múltiplos ThenInclude), fazendo `s.Installments.Sum(...)`
+        // retornar 0 mesmo com parcelas existindo no DB. A projeção
+        // server-side abaixo é imune a esse quirk — SUM/JOIN são
+        // computados pelo Postgres.
+        var statementProjections = await _db.CardStatements
             .AsNoTracking()
             .Where(s => s.UserId == userId
                      && s.DueDate >= cycle.StartDate
                      && s.DueDate <= cycle.EndDate)
-            .Include(s => s.Card)
-            .Include(s => s.Installments)
-                .ThenInclude(i => i.CardEntry)
-                    .ThenInclude(e => e.Category)
+            .OrderBy(s => s.DueDate)
+            .Select(s => new
+            {
+                s.Id,
+                s.CardId,
+                CardName = s.Card.Name,
+                s.DueDate,
+                s.Status,
+                // SUM(amount) executado no Postgres, retorna decimal.
+                // Nullable pra cobrir statement sem installments (evita
+                // "sequence contains no elements").
+                Total = s.Installments.Sum(i => (decimal?)i.Amount) ?? 0m,
+                // Breakdown por categoria — flat map de (amount, category)
+                // pra alimentar BuildCategoryBreakdown sem precisar dos
+                // objetos completos de Installment/CardEntry/Category.
+                Categories = s.Installments
+                    .Select(i => new HomeStatementCategoryProjection(
+                        i.Amount,
+                        i.CardEntry.CategoryId,
+                        i.CardEntry.Category.Key,
+                        i.CardEntry.Category.NamePt))
+                    .ToList(),
+            })
             .ToListAsync(ct);
 
-        var expectedCardStatements = statements
+        var expectedCardStatements = statementProjections
             .Where(s => s.Status != CardStatementStatus.Paid)
-            .Sum(s => s.Installments.Sum(i => i.Amount));
+            .Sum(s => s.Total);
 
-        var cardStatementsInCycle = statements
-            .OrderBy(s => s.DueDate)
+        var cardStatementsInCycle = statementProjections
             .Select(s => new HomeCardStatementDto(
                 s.Id,
                 s.CardId,
-                s.Card.Name,
+                s.CardName,
                 s.DueDate,
-                s.Installments.Sum(i => i.Amount),
+                s.Total,
                 s.Status))
             .ToList();
 
@@ -173,7 +199,7 @@ public class HomeService
         //   - expectedCardStatements filtra faturas não-pagas — faturas
         //     pagas sumiam pelo mesmo motivo. Aqui somamos TODAS as
         //     installments do ciclo (pagas ou não).
-        var totalCardCharges = statements.Sum(s => s.Installments.Sum(i => i.Amount));
+        var totalCardCharges = statementProjections.Sum(s => s.Total);
 
         var remaining = checkingTotal
                       + expectedIncome
@@ -183,7 +209,10 @@ public class HomeService
                       - dailyExpensesSpent;
 
         // 8. Breakdown por categoria (alimenta o pie chart "onde meu dinheiro vai")
-        var categoryBreakdown = BuildCategoryBreakdown(expenses, dailyExpenses, statements);
+        var cardCategorySlices = statementProjections
+            .SelectMany(s => s.Categories)
+            .ToList();
+        var categoryBreakdown = BuildCategoryBreakdown(expenses, dailyExpenses, cardCategorySlices);
 
         var response = new HomeResponse(
             Cycle: new HomeCycleDto(cycle.Id, cycle.StartDate, cycle.EndDate, cycle.Label),
@@ -216,44 +245,42 @@ public class HomeService
     /// - Daily expenses somam `Amount` (já é o real).
     /// - Installments somam pelo valor da parcela; a categoria vem do
     ///   CardEntry pai (cada CardEntry tem 1 categoria, todas as parcelas
-    ///   herdam dela).
+    ///   herdam dela). Recebemos essa fatia já projetada em SQL (com
+    ///   categoryId/key/name flat), evitando depender de Include+navigation.
     /// </summary>
     private static List<HomeCategoryBreakdownDto> BuildCategoryBreakdown(
         List<Expense> expenses,
         List<DailyExpense> dailyExpenses,
-        List<CardStatement> statements)
+        List<HomeStatementCategoryProjection> cardSlices)
     {
         // Tupla: (categoryKey, namePt, amount). Agrupa primeiro pelo Id.
         var aggregator = new Dictionary<Guid, (string Key, string NamePt, decimal Sum)>();
 
-        void Add(Category category, decimal amount)
+        void Add(Guid categoryId, string categoryKey, string categoryName, decimal amount)
         {
-            if (aggregator.TryGetValue(category.Id, out var entry))
+            if (aggregator.TryGetValue(categoryId, out var entry))
             {
-                aggregator[category.Id] = (entry.Key, entry.NamePt, entry.Sum + amount);
+                aggregator[categoryId] = (entry.Key, entry.NamePt, entry.Sum + amount);
             }
             else
             {
-                aggregator[category.Id] = (category.Key, category.NamePt, amount);
+                aggregator[categoryId] = (categoryKey, categoryName, amount);
             }
         }
 
         foreach (var e in expenses)
         {
-            Add(e.Category, e.ExpectedAmount);
+            Add(e.Category.Id, e.Category.Key, e.Category.NamePt, e.ExpectedAmount);
         }
 
         foreach (var d in dailyExpenses)
         {
-            Add(d.Category, d.Amount);
+            Add(d.Category.Id, d.Category.Key, d.Category.NamePt, d.Amount);
         }
 
-        foreach (var statement in statements)
+        foreach (var slice in cardSlices)
         {
-            foreach (var installment in statement.Installments)
-            {
-                Add(installment.CardEntry.Category, installment.Amount);
-            }
+            Add(slice.CategoryId, slice.CategoryKey, slice.CategoryName, slice.Amount);
         }
 
         return aggregator
@@ -266,3 +293,15 @@ public class HomeService
             .ToList();
     }
 }
+
+/// <summary>
+/// Fatia (installment amount + categoria do CardEntry pai) projetada no SQL.
+/// Usado pelo BuildCategoryBreakdown pra não depender de Include/navigation
+/// nas installments — a projeção server-side é imune ao bug de
+/// Include+AsNoTracking com collections aninhadas.
+/// </summary>
+internal sealed record HomeStatementCategoryProjection(
+    decimal Amount,
+    Guid CategoryId,
+    string CategoryKey,
+    string CategoryName);
