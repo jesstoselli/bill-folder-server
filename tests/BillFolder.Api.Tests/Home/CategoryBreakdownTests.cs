@@ -41,9 +41,10 @@ public sealed class CategoryBreakdownTests
         var dailyExpenses = new List<DailyExpense>();
         var cardSlices = new List<HomeStatementCategoryProjection>();
 
-        // Soma de outflows do ciclo = 30 + 20 = 50
+        // adjustmentsOutflows já chega somado do HomeService (ex.: 30 + 20).
+        // Este teste cobre só a fatia sintética, não a soma upstream.
         var result = HomeService.BuildCategoryBreakdown(
-            expenses, dailyExpenses, cardSlices, adjustmentsOutflows: 50m);
+            expenses, dailyExpenses, cardSlices, adjustmentsOutflows: 30m + 20m);
 
         var ajustes = result.SingleOrDefault(c => c.CategoryName == "Ajustes");
         ajustes.Should().NotBeNull();
