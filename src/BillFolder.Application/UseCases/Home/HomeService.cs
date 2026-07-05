@@ -182,6 +182,24 @@ public class HomeService
 
         var dailyExpensesSpent = dailyExpenses.Sum(d => d.Amount);
 
+        // 6b. Cycle adjustments (ajustes avulsos do ciclo — vendas, estornos,
+        // saques da poupança, presentes eventuais). Inflows aumentam
+        // remaining, outflows diminuem.
+        var adjustments = await _db.CycleAdjustments
+            .AsNoTracking()
+            .Where(a => a.UserId == userId
+                     && a.Date >= cycle.StartDate
+                     && a.Date <= cycle.EndDate)
+            .Select(a => new { a.Type, a.Amount })
+            .ToListAsync(ct);
+
+        var adjustmentsInflows = adjustments
+            .Where(a => a.Type == CycleAdjustmentType.Inflow)
+            .Sum(a => a.Amount);
+        var adjustmentsOutflows = adjustments
+            .Where(a => a.Type == CycleAdjustmentType.Outflow)
+            .Sum(a => a.Amount);
+
         // 7. Calcula remaining (o número grande do hero)
         //
         // Semântica: "quanto de saldo resta ao fim do ciclo, considerando
@@ -203,10 +221,12 @@ public class HomeService
 
         var remaining = checkingTotal
                       + expectedIncome
+                      + adjustmentsInflows
                       - paidExpenses
                       - expectedExpenses
                       - totalCardCharges
-                      - dailyExpensesSpent;
+                      - dailyExpensesSpent
+                      - adjustmentsOutflows;
 
         // 8. Breakdown por categoria (alimenta o pie chart "onde meu dinheiro vai")
         var cardCategorySlices = statementProjections
