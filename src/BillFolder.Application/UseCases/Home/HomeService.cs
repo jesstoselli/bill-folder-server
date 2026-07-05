@@ -232,7 +232,8 @@ public class HomeService
         var cardCategorySlices = statementProjections
             .SelectMany(s => s.Categories)
             .ToList();
-        var categoryBreakdown = BuildCategoryBreakdown(expenses, dailyExpenses, cardCategorySlices);
+        var categoryBreakdown = BuildCategoryBreakdown(
+            expenses, dailyExpenses, cardCategorySlices, adjustmentsOutflows);
 
         var response = new HomeResponse(
             Cycle: new HomeCycleDto(cycle.Id, cycle.StartDate, cycle.EndDate, cycle.Label),
@@ -267,11 +268,18 @@ public class HomeService
     ///   CardEntry pai (cada CardEntry tem 1 categoria, todas as parcelas
     ///   herdam dela). Recebemos essa fatia já projetada em SQL (com
     ///   categoryId/key/name flat), evitando depender de Include+navigation.
+    /// - Cycle adjustments não têm categoria real. Os OUTFLOWS (só eles —
+    ///   inflows são crédito e não cabem num gráfico de gastos) entram como
+    ///   uma única fatia sintética "Ajustes", com CategoryId = Guid.Empty
+    ///   (sentinela que nunca colide com categoria real e serializa como
+    ///   string não-nula pro app). Se a soma de outflows for zero, a fatia
+    ///   não é adicionada.
     /// </summary>
-    private static List<HomeCategoryBreakdownDto> BuildCategoryBreakdown(
+    internal static List<HomeCategoryBreakdownDto> BuildCategoryBreakdown(
         List<Expense> expenses,
         List<DailyExpense> dailyExpenses,
-        List<HomeStatementCategoryProjection> cardSlices)
+        List<HomeStatementCategoryProjection> cardSlices,
+        decimal adjustmentsOutflows)
     {
         // Tupla: (categoryKey, namePt, amount). Agrupa primeiro pelo Id.
         var aggregator = new Dictionary<Guid, (string Key, string NamePt, decimal Sum)>();
@@ -301,6 +309,15 @@ public class HomeService
         foreach (var slice in cardSlices)
         {
             Add(slice.CategoryId, slice.CategoryKey, slice.CategoryName, slice.Amount);
+        }
+
+        // Fatia sintética "Ajustes" pros outflows de cycle adjustments.
+        // Só entra se houver outflow (soma > 0); inflows nunca aparecem aqui.
+        // Guid.Empty é sentinela — não colide com categoria real e serializa
+        // como "00000000-..." (string não-nula) pro DTO do app.
+        if (adjustmentsOutflows > 0m)
+        {
+            Add(Guid.Empty, "ajustes", "Ajustes", adjustmentsOutflows);
         }
 
         return aggregator

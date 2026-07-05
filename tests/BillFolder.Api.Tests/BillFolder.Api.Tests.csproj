@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Nomes de teste usam underscores por convenção (Method_State_Expected). -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
