@@ -17,8 +17,20 @@ public static class ExpenseExtensions
     /// banco e o display deriva da data atual. Isso evita a necessidade
     /// de um cron diário que mude Pending → Overdue ao virar o dia.
     /// </summary>
-    public static ExpenseStatus ComputeDisplayStatus(this Expense expense, DateOnly today) =>
-        expense.Status == ExpenseStatus.Pending && expense.DueDate < today
+    public static ExpenseStatus ComputeDisplayStatus(this Expense expense, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(expense);
+
+        // Despesa provisionada (paga em N ocorrências semanais) nunca é "atrasada"
+        // enquanto está em andamento — é um rolling semanal, não um vencimento único.
+        // Mantém o status stored (Pending até quitar tudo; Paid quando completa).
+        if (expense.OccurrencesTotal is { } total && expense.OccurrencesPaid < total)
+        {
+            return expense.Status;
+        }
+
+        return expense.Status == ExpenseStatus.Pending && expense.DueDate < today
             ? ExpenseStatus.Overdue
             : expense.Status;
+    }
 }

@@ -50,6 +50,7 @@ public static class DependencyInjection
         dataSourceBuilder.MapEnum<CardStatementStatus>("card_statement_status");
         dataSourceBuilder.MapEnum<SavingsTransactionType>("savings_transaction_type");
         dataSourceBuilder.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
+        dataSourceBuilder.MapEnum<ExpenseRecurrenceFrequency>("expense_recurrence_frequency");
         var dataSource = dataSourceBuilder.Build();
 
         services.AddSingleton(dataSource);
@@ -65,6 +66,7 @@ public static class DependencyInjection
                 npgsql.MapEnum<CardStatementStatus>("card_statement_status");
                 npgsql.MapEnum<SavingsTransactionType>("savings_transaction_type");
                 npgsql.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
+                npgsql.MapEnum<ExpenseRecurrenceFrequency>("expense_recurrence_frequency");
             }));
 
         // Expor IApplicationDbContext apontando pra mesma instância scoped do DbContext

@@ -96,6 +96,22 @@ public static class ExpensesEndpoints
             return ToHttpResult(result);
         });
 
+        // Dá baixa em UMA ocorrência (semana) de uma despesa provisionada.
+        group.MapPost("/{id:guid}/pay-occurrence", async (
+            Guid id,
+            PayOccurrenceRequest request,
+            ClaimsPrincipal principal,
+            ExpensesService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            var result = await service.PayOccurrenceAsync(userId, id, request, ct);
+            return ToHttpResult(result);
+        });
+
         group.MapDelete("/{id:guid}", async (
             Guid id,
             ClaimsPrincipal principal,

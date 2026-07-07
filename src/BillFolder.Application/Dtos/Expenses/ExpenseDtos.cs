@@ -16,8 +16,20 @@ public sealed record ExpenseResponse(
     string CategoryName,
     Guid? LinkedCardStatementId,
     string? Notes,
+    // Provisionamento (null/0 em despesas normais):
+    decimal? OccurrenceAmount,
+    int? OccurrencesTotal,
+    int OccurrencesPaid,
+    decimal PaidToDate,
     DateTime CreatedAt,
     DateTime UpdatedAt);
+
+/// <summary>Body do POST /v1/expenses/{id}/pay-occurrence — dá baixa em UMA
+/// ocorrência (semana) de uma despesa provisionada.</summary>
+public sealed record PayOccurrenceRequest(
+    DateOnly? PaidDate,
+    decimal? Amount,
+    Guid? PaidFromAccountId);
 
 public sealed record CreateExpenseRequest(
     DateOnly DueDate,

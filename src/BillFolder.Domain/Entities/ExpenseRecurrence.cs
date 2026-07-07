@@ -1,3 +1,5 @@
+using BillFolder.Domain.Enums;
+
 namespace BillFolder.Domain.Entities;
 
 public class ExpenseRecurrence
@@ -7,7 +9,11 @@ public class ExpenseRecurrence
     public string DefaultLabel { get; set; } = null!;
     public decimal DefaultAmount { get; set; }
     public Guid DefaultCategoryId { get; set; }
-    public short DueDay { get; set; }
+    public ExpenseRecurrenceFrequency Frequency { get; set; } = ExpenseRecurrenceFrequency.Monthly;
+    /// <summary>Dia do mês (1–31). Usado só quando Frequency == Monthly. Null pra Weekly.</summary>
+    public short? DueDay { get; set; }
+    /// <summary>Dia da semana (0=domingo … 6=sábado, casa com DayOfWeek). Usado só quando Frequency == Weekly.</summary>
+    public short? Weekday { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
     public bool IsActive { get; set; } = true;

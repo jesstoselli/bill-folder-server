@@ -48,5 +48,6 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         modelBuilder.HasPostgresEnum<CardStatementStatus>("public", "card_statement_status");
         modelBuilder.HasPostgresEnum<SavingsTransactionType>("public", "savings_transaction_type");
         modelBuilder.HasPostgresEnum<CycleAdjustmentType>("public", "cycle_adjustment_type");
+        modelBuilder.HasPostgresEnum<ExpenseRecurrenceFrequency>("public", "expense_recurrence_frequency");
     }
 }

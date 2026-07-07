@@ -86,20 +86,16 @@ public class HomeService
             .Include(e => e.Category)
             .ToListAsync(ct);
 
-        var expectedExpenses = expenses
-            .Where(e => e.Status != ExpenseStatus.Paid)
-            .Sum(e => e.ExpectedAmount);
+        var (expectedExpenses, paidExpenses) = ComputeExpenseBuckets(expenses);
 
-        var paidExpenses = expenses
-            .Where(e => e.Status == ExpenseStatus.Paid)
-            .Sum(e => e.ActualAmount ?? e.ExpectedAmount);
-
+        // Breakdown: provisionada em andamento conta como Pending (nunca Overdue),
+        // consistente com ComputeDisplayStatus.
         var expenseBreakdown = new HomeExpenseBreakdownDto(
             Pending: expenses.Count(e => e.Status == ExpenseStatus.Pending
-                                      && e.DueDate >= today),
-            Overdue: expenses.Count(e => (e.Status == ExpenseStatus.Pending
-                                        && e.DueDate < today)
-                                     || e.Status == ExpenseStatus.Overdue),
+                                      && (e.OccurrencesTotal != null || e.DueDate >= today)),
+            Overdue: expenses.Count(e => e.OccurrencesTotal == null
+                                     && ((e.Status == ExpenseStatus.Pending && e.DueDate < today)
+                                         || e.Status == ExpenseStatus.Overdue)),
             Paid: expenses.Count(e => e.Status == ExpenseStatus.Paid));
 
         var upcomingExpenses = expenses
@@ -275,6 +271,36 @@ public class HomeService
     ///   string não-nula pro app). Se a soma de outflows for zero, a fatia
     ///   não é adicionada.
     /// </summary>
+    /// <summary>
+    /// Divide as despesas do ciclo em (Reserved, Realized):
+    ///  - Reserved: despesa normal não-paga reserva o ExpectedAmount cheio; uma
+    ///    provisionada em andamento reserva só o que falta (ExpectedAmount − PaidToDate).
+    ///  - Realized: despesas quitadas (ActualAmount ?? ExpectedAmount) + o
+    ///    PaidToDate das provisionadas ainda em andamento.
+    /// Invariante: por despesa provisionada, Reserved + Realized = ExpectedAmount
+    /// enquanto não quitada (protege o mês cheio sem contar em dobro o já-pago).
+    /// </summary>
+    internal static (decimal Reserved, decimal Realized) ComputeExpenseBuckets(
+        IReadOnlyCollection<Expense> expenses)
+    {
+        ArgumentNullException.ThrowIfNull(expenses);
+
+        var reserved = expenses
+            .Where(e => e.Status != ExpenseStatus.Paid)
+            .Sum(e => e.OccurrencesTotal != null
+                ? e.ExpectedAmount - e.PaidToDate
+                : e.ExpectedAmount);
+
+        var realized = expenses
+            .Where(e => e.Status == ExpenseStatus.Paid)
+            .Sum(e => e.ActualAmount ?? e.ExpectedAmount)
+          + expenses
+            .Where(e => e.Status != ExpenseStatus.Paid && e.OccurrencesTotal != null)
+            .Sum(e => e.PaidToDate);
+
+        return (reserved, realized);
+    }
+
     internal static List<HomeCategoryBreakdownDto> BuildCategoryBreakdown(
         List<Expense> expenses,
         List<DailyExpense> dailyExpenses,

@@ -1,4 +1,5 @@
 using BillFolder.Application.Dtos.Recurrences;
+using BillFolder.Domain.Enums;
 using FluentValidation;
 
 namespace BillFolder.Application.Validators.Recurrences;
@@ -18,9 +19,16 @@ public class CreateExpenseRecurrenceRequestValidator : AbstractValidator<CreateE
             .NotEqual(Guid.Empty)
             .WithMessage("Categoria é obrigatória.");
 
+        // Monthly usa o dia do mês (1–31); Weekly usa o dia da semana (0–6).
         RuleFor(x => x.DueDay)
-            .InclusiveBetween((short)1, (short)31)
-            .WithMessage("Dia de vencimento deve estar entre 1 e 31.");
+            .NotNull().InclusiveBetween((short)1, (short)31)
+            .When(x => x.Frequency == ExpenseRecurrenceFrequency.Monthly)
+            .WithMessage("Dia de vencimento (1–31) é obrigatório para recorrência mensal.");
+
+        RuleFor(x => x.Weekday)
+            .NotNull().InclusiveBetween((short)0, (short)6)
+            .When(x => x.Frequency == ExpenseRecurrenceFrequency.Weekly)
+            .WithMessage("Dia da semana (0–6) é obrigatório para recorrência semanal.");
 
         RuleFor(x => x.StartDate)
             .NotEqual(default(DateOnly));
@@ -50,6 +58,10 @@ public class UpdateExpenseRecurrenceRequestValidator : AbstractValidator<UpdateE
         RuleFor(x => x.DueDay!.Value)
             .InclusiveBetween((short)1, (short)31)
             .When(x => x.DueDay.HasValue);
+
+        RuleFor(x => x.Weekday!.Value)
+            .InclusiveBetween((short)0, (short)6)
+            .When(x => x.Weekday.HasValue);
 
         RuleFor(x => x.StartDate!.Value)
             .NotEqual(default(DateOnly)).When(x => x.StartDate.HasValue);

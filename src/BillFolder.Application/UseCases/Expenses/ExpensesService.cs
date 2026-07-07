@@ -157,6 +157,16 @@ public class ExpensesService
             return OperationResult.Fail<ExpenseResponse>("not_found", "Despesa não encontrada.");
         }
 
+        // Despesa provisionada é quitada por ocorrência (pay-occurrence), nunca
+        // marcada Paid direto — senão pularia o rastreio semanal e a matemática
+        // de PaidToDate. Blinda o caso (o app já roteia pro fluxo certo).
+        if (request.Status == ExpenseStatus.Paid && expense.OccurrencesTotal is not null)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "provisioned_expense",
+                "Despesa provisionada é quitada por ocorrência, não diretamente.");
+        }
+
         // Account ownership check
         if (request.PaidFromAccountId.HasValue)
         {
@@ -232,6 +242,80 @@ public class ExpensesService
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 
+    /// <summary>
+    /// Dá baixa em UMA ocorrência (semana) de uma despesa provisionada:
+    /// incrementa OccurrencesPaid, soma o valor a PaidToDate, e quando a
+    /// última ocorrência é paga, transiciona pra Paid (ActualAmount = PaidToDate).
+    /// O ExpectedAmount cheio permanece reservado no remaining até quitar tudo
+    /// (a matemática vive no HomeService: reserva = ExpectedAmount − PaidToDate).
+    /// </summary>
+    public async Task<OperationResult<ExpenseResponse>> PayOccurrenceAsync(
+        Guid userId, Guid id, PayOccurrenceRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var expense = await _db.Expenses
+            .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
+
+        if (expense is null)
+        {
+            return OperationResult.Fail<ExpenseResponse>("not_found", "Despesa não encontrada.");
+        }
+
+        if (expense.OccurrencesTotal is not { } total)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "not_provisioned", "Despesa não é provisionada (sem ocorrências).");
+        }
+
+        if (expense.OccurrencesPaid >= total)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "already_settled", "Todas as ocorrências já foram quitadas.");
+        }
+
+        var amount = request.Amount ?? expense.OccurrenceAmount ?? 0m;
+        if (amount <= 0m)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "validation_error", "Valor da baixa deve ser positivo.");
+        }
+
+        if (request.PaidFromAccountId.HasValue)
+        {
+            var accountOwnedByUser = await _db.CheckingAccounts
+                .AnyAsync(a => a.Id == request.PaidFromAccountId.Value && a.UserId == userId, ct);
+            if (!accountOwnedByUser)
+            {
+                return OperationResult.Fail<ExpenseResponse>(
+                    "invalid_account", "Conta não existe ou não pertence ao usuário.");
+            }
+            expense.PaidFromAccountId = request.PaidFromAccountId.Value;
+        }
+
+        expense.OccurrencesPaid += 1;
+        expense.PaidToDate += amount;
+        expense.PaidDate = request.PaidDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date);
+
+        // Última ocorrência → despesa quitada.
+        if (expense.OccurrencesPaid >= total)
+        {
+            expense.Status = ExpenseStatus.Paid;
+            expense.ActualAmount = expense.PaidToDate;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        var updated = await _db.Expenses
+            .AsNoTracking()
+            .Include(e => e.Category)
+            .Include(e => e.PaidFromAccount)
+            .FirstAsync(e => e.Id == id, ct);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        return OperationResult.Ok(MapToResponse(updated, today));
+    }
+
     public async Task<OperationResult<bool>> DeleteAsync(
         Guid userId, Guid id, CancellationToken ct = default)
     {
@@ -276,6 +360,10 @@ public class ExpensesService
             e.Category.NamePt,
             e.LinkedCardStatementId,
             e.Notes,
+            e.OccurrenceAmount,
+            e.OccurrencesTotal,
+            e.OccurrencesPaid,
+            e.PaidToDate,
             e.CreatedAt,
             e.UpdatedAt);
 }

@@ -41,7 +41,7 @@ public class ExpenseRecurrencesService
             .Select(r => new ExpenseRecurrenceResponse(
                 r.Id, r.DefaultLabel, r.DefaultAmount,
                 r.DefaultCategoryId, r.DefaultCategory.NamePt,
-                r.DueDay, r.StartDate, r.EndDate, r.IsActive,
+                r.Frequency, r.DueDay, r.Weekday, r.StartDate, r.EndDate, r.IsActive,
                 r.CreatedAt, r.UpdatedAt))
             .ToListAsync(ct);
     }
@@ -86,13 +86,20 @@ public class ExpenseRecurrencesService
             DefaultLabel = request.DefaultLabel.Trim(),
             DefaultAmount = request.DefaultAmount,
             DefaultCategoryId = request.DefaultCategoryId,
+            Frequency = request.Frequency,
             DueDay = request.DueDay,
+            Weekday = request.Weekday,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             IsActive = true,
         };
 
         _db.ExpenseRecurrences.Add(rec);
+        await _db.SaveChangesAsync(ct);
+
+        // Template Weekly → materializa a despesa provisionada nos ciclos
+        // existentes que ele cobre (espelha IncomeSourcesService). No-op pra Monthly.
+        await ProvisionedExpenseExpansion.ExpandForTemplateAsync(_db, rec, ct);
         await _db.SaveChangesAsync(ct);
 
         var created = await _db.ExpenseRecurrences
@@ -158,6 +165,10 @@ public class ExpenseRecurrencesService
         {
             rec.DueDay = request.DueDay.Value;
         }
+        if (request.Weekday.HasValue)
+        {
+            rec.Weekday = request.Weekday.Value;
+        }
         if (request.StartDate.HasValue)
         {
             rec.StartDate = request.StartDate.Value;
@@ -202,6 +213,6 @@ public class ExpenseRecurrencesService
     private static ExpenseRecurrenceResponse MapToResponse(ExpenseRecurrence r) =>
         new(r.Id, r.DefaultLabel, r.DefaultAmount,
             r.DefaultCategoryId, r.DefaultCategory.NamePt,
-            r.DueDay, r.StartDate, r.EndDate, r.IsActive,
+            r.Frequency, r.DueDay, r.Weekday, r.StartDate, r.EndDate, r.IsActive,
             r.CreatedAt, r.UpdatedAt);
 }

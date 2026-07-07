@@ -37,6 +37,10 @@ CREATE TYPE cycle_adjustment_type AS ENUM (
     'inflow', 'outflow'
 );
 
+CREATE TYPE expense_recurrence_frequency AS ENUM (
+    'monthly', 'weekly'
+);
+
 -- ----------------------------------------------------------------------------
 -- Trigger function: set updated_at
 -- ----------------------------------------------------------------------------
@@ -189,7 +193,9 @@ CREATE TABLE expense_recurrences (
     default_label         TEXT            NOT NULL,
     default_amount        NUMERIC(12,2)   NOT NULL,
     default_category_id   UUID            NOT NULL REFERENCES categories(id),
-    due_day               SMALLINT        NOT NULL CHECK (due_day BETWEEN 1 AND 31),
+    frequency             expense_recurrence_frequency NOT NULL DEFAULT 'monthly',
+    due_day               SMALLINT        CHECK (due_day IS NULL OR (due_day BETWEEN 1 AND 31)),
+    weekday               SMALLINT        CHECK (weekday IS NULL OR (weekday BETWEEN 0 AND 6)),
     start_date            DATE            NOT NULL,
     end_date              DATE,
     is_active             BOOLEAN         NOT NULL DEFAULT true,
@@ -233,6 +239,10 @@ CREATE TABLE expenses (
     category_id                 UUID             NOT NULL REFERENCES categories(id),
     linked_card_statement_id    UUID             REFERENCES card_statements(id) ON DELETE SET NULL,
     notes                       TEXT,
+    occurrence_amount           NUMERIC(12,2),
+    occurrences_total           INTEGER,
+    occurrences_paid            INTEGER          NOT NULL DEFAULT 0,
+    paid_to_date                NUMERIC(12,2)    NOT NULL DEFAULT 0,
     created_at                  TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
     updated_at                  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );

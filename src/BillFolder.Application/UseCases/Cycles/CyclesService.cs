@@ -2,6 +2,7 @@ using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cycles;
 using BillFolder.Application.UseCases.Incomes;
+using BillFolder.Application.UseCases.Recurrences;
 using BillFolder.Domain.Entities;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -174,6 +175,10 @@ public class CyclesService
         // (source cadastrada depois do ciclo).
         await IncomeSourceExpansion.ExpandForCycleAsync(_db, cycle, ct);
 
+        // Idem pras despesas provisionadas semanais (terapia, diarista):
+        // materializa a despesa provisionada do ciclo pra cada template Weekly ativo.
+        await ProvisionedExpenseExpansion.ExpandForCycleAsync(_db, cycle, ct);
+
         // Rolling window: gera 11 ciclos consecutivos à frente pra o user
         // ter 12 meses de janela sem precisar criar cada um manualmente. Se
         // ele deixar o app parado por 12 meses, o safety-net do
@@ -270,6 +275,7 @@ public class CyclesService
             _db.Cycles.Add(next);
 
             await IncomeSourceExpansion.ExpandForCycleAsync(_db, next, ct);
+            await ProvisionedExpenseExpansion.ExpandForCycleAsync(_db, next, ct);
 
             previous = next;
             generated++;

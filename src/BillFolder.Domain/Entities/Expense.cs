@@ -17,6 +17,16 @@ public class Expense
   public Guid CategoryId { get; set; }
   public Guid? LinkedCardStatementId { get; set; }
   public string? Notes { get; set; }
+
+  // ---- Provisionamento (despesa paga em N ocorrências semanais) ----
+  // Nullable/zero em despesas normais — que continuam tudo-ou-nada.
+  // Quando OccurrencesTotal != null, a despesa é "provisionada": reserva o
+  // ExpectedAmount cheio, mas é quitada uma ocorrência (semana) por vez.
+  public decimal? OccurrenceAmount { get; set; }
+  public int? OccurrencesTotal { get; set; }
+  public int OccurrencesPaid { get; set; }
+  public decimal PaidToDate { get; set; }
+
   public DateTime CreatedAt { get; set; }
   public DateTime UpdatedAt { get; set; }
 

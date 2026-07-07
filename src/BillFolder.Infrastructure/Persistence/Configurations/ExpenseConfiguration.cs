@@ -30,6 +30,10 @@ public class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
         builder.Property(x => x.CategoryId).HasColumnName("category_id");
         builder.Property(x => x.LinkedCardStatementId).HasColumnName("linked_card_statement_id");
         builder.Property(x => x.Notes).HasColumnName("notes");
+        builder.Property(x => x.OccurrenceAmount).HasColumnName("occurrence_amount").HasColumnType("numeric(12,2)");
+        builder.Property(x => x.OccurrencesTotal).HasColumnName("occurrences_total");
+        builder.Property(x => x.OccurrencesPaid).HasColumnName("occurrences_paid").HasDefaultValue(0);
+        builder.Property(x => x.PaidToDate).HasColumnName("paid_to_date").HasColumnType("numeric(12,2)").HasDefaultValue(0m);
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
