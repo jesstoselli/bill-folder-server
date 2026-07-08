@@ -335,6 +335,40 @@ public class ExpensesService
 
     // ----- helpers -----
 
+    /// <summary>
+    /// Seleciona as ocorrências a excluir de um template, dado o escopo:
+    /// <list type="bullet">
+    /// <item><see cref="RecurrenceScope.This"/> → apenas a ocorrência-alvo.</item>
+    /// <item><see cref="RecurrenceScope.ThisAndFollowing"/> → a alvo + as com
+    /// <c>DueDate &gt;= target.DueDate</c> que ainda NÃO estão pagas (uma
+    /// ocorrência futura já quitada permanece, preservando o histórico).</item>
+    /// </list>
+    /// Puro (sem DB) — testado como ComputeExpenseBuckets.
+    /// </summary>
+    internal static IReadOnlyCollection<Guid> OccurrencesToDelete(
+        IReadOnlyCollection<Expense> templateOccurrences,
+        Expense target,
+        RecurrenceScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(templateOccurrences);
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (scope == RecurrenceScope.This)
+        {
+            return new[] { target.Id };
+        }
+
+        var ids = new HashSet<Guid> { target.Id };
+        foreach (var occurrence in templateOccurrences)
+        {
+            if (occurrence.DueDate >= target.DueDate && occurrence.Status != ExpenseStatus.Paid)
+            {
+                ids.Add(occurrence.Id);
+            }
+        }
+        return ids;
+    }
+
     private static string? NormalizeOptional(string? value)
     {
         if (value is null)
