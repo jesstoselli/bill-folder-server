@@ -77,6 +77,22 @@ public static class CardEntriesEndpoints
             return ToHttpResult(result);
         });
 
+        // Reajusta o valor de uma assinatura (escopo no corpo).
+        group.MapPost("/{id:guid}/update-amount", async (
+            Guid id,
+            UpdateCardSubscriptionAmountRequest request,
+            ClaimsPrincipal principal,
+            CardEntriesService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            var result = await service.UpdateSubscriptionAmountAsync(userId, id, request, ct);
+            return ToHttpResult(result);
+        });
+
         group.MapDelete("/{id:guid}", async (
             Guid id,
             string? scope,

@@ -13,15 +13,18 @@ public class CardEntriesService
     private readonly IApplicationDbContext _db;
     private readonly IValidator<CreateCardEntryRequest> _createValidator;
     private readonly IValidator<UpdateCardEntryRequest> _updateValidator;
+    private readonly IValidator<UpdateCardSubscriptionAmountRequest> _updateAmountValidator;
 
     public CardEntriesService(
         IApplicationDbContext db,
         IValidator<CreateCardEntryRequest> createValidator,
-        IValidator<UpdateCardEntryRequest> updateValidator)
+        IValidator<UpdateCardEntryRequest> updateValidator,
+        IValidator<UpdateCardSubscriptionAmountRequest> updateAmountValidator)
     {
         _db = db;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _updateAmountValidator = updateAmountValidator;
     }
 
     public async Task<List<CardEntryResponse>> ListAsync(
@@ -241,7 +244,99 @@ public class CardEntriesService
         return OperationResult.Ok(true);
     }
 
+    /// <summary>
+    /// Reajusta o valor de uma assinatura (CardEntry mensal, InstallmentsCount = 1).
+    /// This → só esta ocorrência. ThisAndFollowing → esta + as seguintes em fatura aberta,
+    /// e ainda atualiza o DefaultAmount do template pra gerações futuras usarem o novo preço.
+    /// Cada ocorrência tem uma única installment — recalcula tanto a installment quanto o
+    /// TotalAmount do entry. Faturas fechadas/pagas nunca mudam.
+    /// </summary>
+    public async Task<OperationResult<CardEntryResponse>> UpdateSubscriptionAmountAsync(
+        Guid userId, Guid cardEntryId, UpdateCardSubscriptionAmountRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await _updateAmountValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return OperationResult.Fail<CardEntryResponse>(
+                "validation_error", validation.Errors[0].ErrorMessage);
+        }
+
+        var entry = await _db.CardEntries
+            .Where(e => e.Id == cardEntryId && e.UserId == userId)
+            .Include(e => e.Installments).ThenInclude(i => i.Statement)
+            .FirstOrDefaultAsync(ct);
+
+        if (entry is null)
+        {
+            return OperationResult.Fail<CardEntryResponse>("not_found", "Compra não encontrada.");
+        }
+
+        // Reajuste só existe pra assinatura: mensal, uma parcela. Compra parcelada muda
+        // por outro fluxo (recalcular N parcelas e mover entre faturas).
+        if (entry.InstallmentsCount != 1)
+        {
+            return OperationResult.Fail<CardEntryResponse>(
+                "not_subscription", "Reajuste só se aplica a assinatura (uma parcela).");
+        }
+
+        if (request.Scope == RecurrenceScope.ThisAndFollowing && entry.TemplateId is { } templateId)
+        {
+            var siblings = await _db.CardEntries
+                .Where(e => e.UserId == userId && e.TemplateId == templateId)
+                .Include(e => e.Installments).ThenInclude(i => i.Statement)
+                .ToListAsync(ct);
+
+            var statusByEntryId = SubscriptionStatementStatuses(siblings);
+            var idsToReprice = SubscriptionOccurrencesToReprice(siblings, entry, request.Scope, statusByEntryId);
+
+            foreach (var sibling in siblings.Where(e => idsToReprice.Contains(e.Id)))
+            {
+                RepriceSubscriptionEntry(sibling, request.Amount);
+            }
+
+            var template = await _db.CardEntryRecurrences
+                .FirstOrDefaultAsync(r => r.Id == templateId && r.UserId == userId, ct);
+            if (template is not null)
+            {
+                template.DefaultAmount = request.Amount;
+            }
+        }
+        else
+        {
+            // This (ou sem template): só a ocorrência-alvo.
+            RepriceSubscriptionEntry(entry, request.Amount);
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        var updated = await _db.CardEntries
+            .AsNoTracking()
+            .Where(e => e.Id == cardEntryId)
+            .Include(e => e.Card)
+            .Include(e => e.Category)
+            .Include(e => e.Installments).ThenInclude(i => i.Statement)
+            .FirstAsync(ct);
+
+        return OperationResult.Ok(MapToResponse(updated));
+    }
+
     // ----- helpers -----
+
+    /// <summary>
+    /// Aplica o novo valor a uma assinatura: a única installment recebe o valor cheio
+    /// e o TotalAmount do entry acompanha.
+    /// </summary>
+    private static void RepriceSubscriptionEntry(CardEntry entry, decimal amount)
+    {
+        entry.TotalAmount = amount;
+        var installment = entry.Installments.FirstOrDefault();
+        if (installment is not null)
+        {
+            installment.Amount = amount;
+        }
+    }
 
     /// <summary>
     /// Seleciona as ocorrências de uma assinatura (CardEntry mensal com TemplateId) a
@@ -257,6 +352,31 @@ public class CardEntriesService
     /// o helper testável. Uma assinatura tem exatamente uma installment numa fatura.
     /// </summary>
     internal static IReadOnlyCollection<Guid> SubscriptionOccurrencesToDelete(
+        IReadOnlyCollection<CardEntry> templateEntries,
+        CardEntry target,
+        RecurrenceScope scope,
+        IReadOnlyDictionary<Guid, CardStatementStatus> statementStatusByEntryId)
+        => SubscriptionOccurrencesInScope(templateEntries, target, scope, statementStatusByEntryId);
+
+    /// <summary>
+    /// Seleciona as ocorrências de uma assinatura que recebem o novo valor num reajuste,
+    /// dado o escopo. Mesma regra do <see cref="SubscriptionOccurrencesToDelete"/>:
+    /// <see cref="RecurrenceScope.This"/> → só a alvo; <see cref="RecurrenceScope.ThisAndFollowing"/>
+    /// → a alvo + as seguintes em fatura aberta (fechadas/pagas nunca mudam).
+    /// </summary>
+    internal static IReadOnlyCollection<Guid> SubscriptionOccurrencesToReprice(
+        IReadOnlyCollection<CardEntry> templateEntries,
+        CardEntry target,
+        RecurrenceScope scope,
+        IReadOnlyDictionary<Guid, CardStatementStatus> statementStatusByEntryId)
+        => SubscriptionOccurrencesInScope(templateEntries, target, scope, statementStatusByEntryId);
+
+    /// <summary>
+    /// Núcleo compartilhado por delete e reprice: dado o escopo, retorna os ids das
+    /// ocorrências afetadas. This → só a alvo. ThisAndFollowing → a alvo + as com
+    /// PurchaseDate &gt;= alvo cuja fatura ainda está aberta (Closed/Paid ficam de fora).
+    /// </summary>
+    private static IReadOnlyCollection<Guid> SubscriptionOccurrencesInScope(
         IReadOnlyCollection<CardEntry> templateEntries,
         CardEntry target,
         RecurrenceScope scope,

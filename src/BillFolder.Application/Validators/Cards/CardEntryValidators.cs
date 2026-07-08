@@ -54,3 +54,14 @@ public class UpdateCardEntryRequestValidator : AbstractValidator<UpdateCardEntry
             .When(x => x.Notes is not null);
     }
 }
+
+public class UpdateCardSubscriptionAmountRequestValidator
+    : AbstractValidator<UpdateCardSubscriptionAmountRequest>
+{
+    public UpdateCardSubscriptionAmountRequestValidator()
+    {
+        RuleFor(x => x.Amount)
+            .GreaterThan(0)
+            .WithMessage("Valor deve ser maior que zero.");
+    }
+}

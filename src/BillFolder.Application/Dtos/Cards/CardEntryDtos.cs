@@ -1,3 +1,5 @@
+using BillFolder.Domain.Enums;
+
 namespace BillFolder.Application.Dtos.Cards;
 
 public sealed record CardEntryResponse(
@@ -40,3 +42,12 @@ public sealed record UpdateCardEntryRequest(
     string? Label,
     Guid? CategoryId,
     string? Notes);
+
+/// <summary>
+/// Reajusta o valor de uma assinatura (CardEntry mensal, InstallmentsCount = 1).
+/// O escopo decide o alcance: só esta ocorrência, ou esta + as seguintes em fatura
+/// aberta (que também atualiza o DefaultAmount do template pra gerações futuras).
+/// </summary>
+public sealed record UpdateCardSubscriptionAmountRequest(
+    decimal Amount,
+    RecurrenceScope Scope);
