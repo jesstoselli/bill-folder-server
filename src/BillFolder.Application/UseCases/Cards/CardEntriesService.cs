@@ -110,87 +110,18 @@ public class CardEntriesService
                 "invalid_category", "Categoria não existe.");
         }
 
-        // Calcula a fatura da PRIMEIRA parcela
-        var (firstStart, firstEnd, firstDue) = CardCycleCalculator.ComputeStatementForPurchase(
-            request.PurchaseDate, card.ClosingDay, card.DueDay);
-
-        // Calcula o último period_end (parcela N)
-        var lastEnd = firstEnd;
-        var lastStart = firstStart;
-        var lastDue = firstDue;
-        for (var i = 1; i < request.InstallmentsCount; i++)
-        {
-            (lastStart, lastEnd, lastDue) = CardCycleCalculator.NextStatement(
-                lastEnd, card.ClosingDay, card.DueDay);
-        }
-
-        // Pre-load todas as faturas que JÁ existem nesse range pra evitar N queries
-        var existingStatements = await _db.CardStatements
-            .Where(s => s.CardId == card.Id
-                     && s.PeriodEnd >= firstEnd
-                     && s.PeriodEnd <= lastEnd)
-            .ToListAsync(ct);
-
-        var statementCache = existingStatements.ToDictionary(s => s.PeriodEnd);
-
-        // Cria a entry
-        var entry = new CardEntry
-        {
-            Id = Guid.CreateVersion7(),
-            UserId = userId,
-            CardId = card.Id,
-            PurchaseDate = request.PurchaseDate,
-            Label = request.Label.Trim(),
-            TotalAmount = request.TotalAmount,
-            InstallmentsCount = request.InstallmentsCount,
-            CategoryId = request.CategoryId,
-            Notes = NormalizeOptional(request.Notes),
-        };
-        _db.CardEntries.Add(entry);
-
-        // Distribui valores entre parcelas (última pega o resto pra fechar conta)
-        var amounts = CardCycleCalculator.DistributeAmounts(request.TotalAmount, request.InstallmentsCount);
-
-        // Para cada parcela, find-or-create a statement e cria a installment
-        var currentStart = firstStart;
-        var currentEnd = firstEnd;
-        var currentDue = firstDue;
-
-        for (var i = 0; i < request.InstallmentsCount; i++)
-        {
-            if (!statementCache.TryGetValue(currentEnd, out var statement))
-            {
-                statement = new CardStatement
-                {
-                    Id = Guid.CreateVersion7(),
-                    UserId = userId,
-                    CardId = card.Id,
-                    PeriodStart = currentStart,
-                    PeriodEnd = currentEnd,
-                    DueDate = currentDue,
-                    Status = CardStatementStatus.Open,
-                };
-                _db.CardStatements.Add(statement);
-                statementCache[currentEnd] = statement;
-            }
-
-            var installment = new Installment
-            {
-                Id = Guid.CreateVersion7(),
-                CardEntryId = entry.Id,
-                StatementId = statement.Id,
-                InstallmentNumber = (short)(i + 1),
-                Amount = amounts[i],
-            };
-            _db.Installments.Add(installment);
-
-            // Avança pra próxima fatura (se não for a última)
-            if (i < request.InstallmentsCount - 1)
-            {
-                (currentStart, currentEnd, currentDue) = CardCycleCalculator.NextStatement(
-                    currentEnd, card.ClosingDay, card.DueDay);
-            }
-        }
+        var entry = await MaterializeChargeAsync(
+            _db,
+            userId,
+            card,
+            request.PurchaseDate,
+            request.Label.Trim(),
+            request.TotalAmount,
+            request.InstallmentsCount,
+            request.CategoryId,
+            templateId: null,
+            NormalizeOptional(request.Notes),
+            ct);
 
         // SaveChanges único — toda a operação numa transação implícita do EF Core
         await _db.SaveChangesAsync(ct);
@@ -282,6 +213,115 @@ public class CardEntriesService
     }
 
     // ----- helpers -----
+
+    /// <summary>
+    /// Materializa UMA compra: cria o CardEntry, distribui parcelas e faz
+    /// find-or-create das CardStatements que as recebem (via CardCycleCalculator).
+    /// Só ADICIONA ao change tracker — o SaveChangesAsync é responsabilidade do
+    /// caller (CreateAsync salva logo após; a expansão de recorrências salva em
+    /// lote). Reutilizado por CardEntryRecurrenceExpansion pra auto-gerar
+    /// assinaturas mensais como uma compra à vista (installmentsCount = 1).
+    /// </summary>
+    internal static async Task<CardEntry> MaterializeChargeAsync(
+        IApplicationDbContext db,
+        Guid userId,
+        CreditCardAccount card,
+        DateOnly purchaseDate,
+        string label,
+        decimal totalAmount,
+        short installmentsCount,
+        Guid categoryId,
+        Guid? templateId,
+        string? notes,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+
+        // Calcula a fatura da PRIMEIRA parcela
+        var (firstStart, firstEnd, firstDue) = CardCycleCalculator.ComputeStatementForPurchase(
+            purchaseDate, card.ClosingDay, card.DueDay);
+
+        // Calcula o último period_end (parcela N)
+        var lastEnd = firstEnd;
+        var lastStart = firstStart;
+        var lastDue = firstDue;
+        for (var i = 1; i < installmentsCount; i++)
+        {
+            (lastStart, lastEnd, lastDue) = CardCycleCalculator.NextStatement(
+                lastEnd, card.ClosingDay, card.DueDay);
+        }
+
+        // Pre-load todas as faturas que JÁ existem nesse range pra evitar N queries
+        var existingStatements = await db.CardStatements
+            .Where(s => s.CardId == card.Id
+                     && s.PeriodEnd >= firstEnd
+                     && s.PeriodEnd <= lastEnd)
+            .ToListAsync(ct);
+
+        var statementCache = existingStatements.ToDictionary(s => s.PeriodEnd);
+
+        // Cria a entry
+        var entry = new CardEntry
+        {
+            Id = Guid.CreateVersion7(),
+            UserId = userId,
+            CardId = card.Id,
+            TemplateId = templateId,
+            PurchaseDate = purchaseDate,
+            Label = label,
+            TotalAmount = totalAmount,
+            InstallmentsCount = installmentsCount,
+            CategoryId = categoryId,
+            Notes = notes,
+        };
+        db.CardEntries.Add(entry);
+
+        // Distribui valores entre parcelas (última pega o resto pra fechar conta)
+        var amounts = CardCycleCalculator.DistributeAmounts(totalAmount, installmentsCount);
+
+        // Para cada parcela, find-or-create a statement e cria a installment
+        var currentStart = firstStart;
+        var currentEnd = firstEnd;
+        var currentDue = firstDue;
+
+        for (var i = 0; i < installmentsCount; i++)
+        {
+            if (!statementCache.TryGetValue(currentEnd, out var statement))
+            {
+                statement = new CardStatement
+                {
+                    Id = Guid.CreateVersion7(),
+                    UserId = userId,
+                    CardId = card.Id,
+                    PeriodStart = currentStart,
+                    PeriodEnd = currentEnd,
+                    DueDate = currentDue,
+                    Status = CardStatementStatus.Open,
+                };
+                db.CardStatements.Add(statement);
+                statementCache[currentEnd] = statement;
+            }
+
+            var installment = new Installment
+            {
+                Id = Guid.CreateVersion7(),
+                CardEntryId = entry.Id,
+                StatementId = statement.Id,
+                InstallmentNumber = (short)(i + 1),
+                Amount = amounts[i],
+            };
+            db.Installments.Add(installment);
+
+            // Avança pra próxima fatura (se não for a última)
+            if (i < installmentsCount - 1)
+            {
+                (currentStart, currentEnd, currentDue) = CardCycleCalculator.NextStatement(
+                    currentEnd, card.ClosingDay, card.DueDay);
+            }
+        }
+
+        return entry;
+    }
 
     private static string? NormalizeOptional(string? value)
     {
