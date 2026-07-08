@@ -194,7 +194,7 @@ public class CardEntriesService
     }
 
     public async Task<OperationResult<bool>> DeleteAsync(
-        Guid userId, Guid id, CancellationToken ct = default)
+        Guid userId, Guid id, RecurrenceScope scope = RecurrenceScope.This, CancellationToken ct = default)
     {
         var entry = await _db.CardEntries
             .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
@@ -204,15 +204,114 @@ public class CardEntriesService
             return OperationResult.Fail<bool>("not_found", "Compra não encontrada.");
         }
 
-        // FK em installments com ON DELETE CASCADE — parcelas vão junto.
-        // Faturas (statements) ficam: podem ter outras compras vinculadas.
-        _db.CardEntries.Remove(entry);
+        // ThisAndFollowing só faz sentido numa assinatura (com TemplateId): apaga esta +
+        // as ocorrências seguintes cuja fatura ainda está aberta E encerra o template
+        // (IsActive = false) pra parar a geração futura. Sem TemplateId, cai no This.
+        if (scope == RecurrenceScope.ThisAndFollowing && entry.TemplateId is { } templateId)
+        {
+            var siblings = await _db.CardEntries
+                .Where(e => e.UserId == userId && e.TemplateId == templateId)
+                .Include(e => e.Installments).ThenInclude(i => i.Statement)
+                .ToListAsync(ct);
+
+            var statusByEntryId = SubscriptionStatementStatuses(siblings);
+
+            var idsToDelete = SubscriptionOccurrencesToDelete(siblings, entry, scope, statusByEntryId);
+            var toDelete = siblings.Where(e => idsToDelete.Contains(e.Id));
+
+            // FK em installments com ON DELETE CASCADE — parcelas vão junto.
+            _db.CardEntries.RemoveRange(toDelete);
+
+            var template = await _db.CardEntryRecurrences
+                .FirstOrDefaultAsync(r => r.Id == templateId && r.UserId == userId, ct);
+            if (template is not null)
+            {
+                template.IsActive = false;
+            }
+        }
+        else
+        {
+            // FK em installments com ON DELETE CASCADE — parcelas vão junto.
+            // Faturas (statements) ficam: podem ter outras compras vinculadas.
+            _db.CardEntries.Remove(entry);
+        }
+
         await _db.SaveChangesAsync(ct);
 
         return OperationResult.Ok(true);
     }
 
     // ----- helpers -----
+
+    /// <summary>
+    /// Seleciona as ocorrências de uma assinatura (CardEntry mensal com TemplateId) a
+    /// excluir, dado o escopo:
+    /// <list type="bullet">
+    /// <item><see cref="RecurrenceScope.This"/> → apenas a ocorrência-alvo.</item>
+    /// <item><see cref="RecurrenceScope.ThisAndFollowing"/> → a alvo + as com
+    /// <c>PurchaseDate &gt;= target.PurchaseDate</c> cuja fatura ainda está aberta
+    /// (<see cref="CardStatementStatus.Open"/>). Ocorrências futuras já em fatura
+    /// fechada/paga (Closed/Paid) permanecem, preservando o histórico.</item>
+    /// </list>
+    /// Puro (sem DB): o status da fatura de cada entry entra via dicionário, mantendo
+    /// o helper testável. Uma assinatura tem exatamente uma installment numa fatura.
+    /// </summary>
+    internal static IReadOnlyCollection<Guid> SubscriptionOccurrencesToDelete(
+        IReadOnlyCollection<CardEntry> templateEntries,
+        CardEntry target,
+        RecurrenceScope scope,
+        IReadOnlyDictionary<Guid, CardStatementStatus> statementStatusByEntryId)
+    {
+        ArgumentNullException.ThrowIfNull(templateEntries);
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(statementStatusByEntryId);
+
+        if (scope == RecurrenceScope.This)
+        {
+            return new[] { target.Id };
+        }
+
+        var ids = new HashSet<Guid> { target.Id };
+        foreach (var entry in templateEntries)
+        {
+            if (entry.PurchaseDate < target.PurchaseDate)
+            {
+                continue;
+            }
+
+            // Só cai fora quem tem fatura fechada/paga. Sem status no dicionário → trata
+            // como aberta (não deveria acontecer, mas não perde a ocorrência-alvo).
+            var isClosedOrPaid =
+                statementStatusByEntryId.TryGetValue(entry.Id, out var status)
+                && status != CardStatementStatus.Open;
+
+            if (!isClosedOrPaid)
+            {
+                ids.Add(entry.Id);
+            }
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// Mapeia cada assinatura (CardEntry com uma única installment) ao status da sua
+    /// fatura. Assume entries com Installments+Statement já carregados. Entries sem
+    /// installment (não deveria acontecer numa assinatura) ficam de fora do dicionário.
+    /// </summary>
+    private static Dictionary<Guid, CardStatementStatus> SubscriptionStatementStatuses(
+        IEnumerable<CardEntry> entries)
+    {
+        var map = new Dictionary<Guid, CardStatementStatus>();
+        foreach (var entry in entries)
+        {
+            var statement = entry.Installments.FirstOrDefault()?.Statement;
+            if (statement is not null)
+            {
+                map[entry.Id] = statement.Status;
+            }
+        }
+        return map;
+    }
 
     /// <summary>
     /// Materializa UMA compra: cria o CardEntry, distribui parcelas e faz
