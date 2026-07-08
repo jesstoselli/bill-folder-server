@@ -566,6 +566,7 @@ public class CardEntriesService
             e.Notes,
             e.CreatedAt,
             e.UpdatedAt,
+            e.TemplateId,
             e.Installments
                 .OrderBy(i => i.InstallmentNumber)
                 .Select(i => new EntryInstallmentDto(

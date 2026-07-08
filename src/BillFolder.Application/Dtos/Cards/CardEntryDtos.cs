@@ -15,6 +15,9 @@ public sealed record CardEntryResponse(
     string? Notes,
     DateTime CreatedAt,
     DateTime UpdatedAt,
+    // Não-nulo quando a compra foi gerada por uma assinatura recorrente
+    // (CardEntryRecurrence). O app usa isso pra oferecer encerrar/reajustar.
+    Guid? TemplateId,
     IReadOnlyList<EntryInstallmentDto> Installments);
 
 public sealed record EntryInstallmentDto(
