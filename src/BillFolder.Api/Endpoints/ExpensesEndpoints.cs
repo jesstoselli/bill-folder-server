@@ -114,6 +114,7 @@ public static class ExpensesEndpoints
 
         group.MapDelete("/{id:guid}", async (
             Guid id,
+            string? scope,
             ClaimsPrincipal principal,
             ExpensesService service,
             CancellationToken ct) =>
@@ -122,13 +123,50 @@ public static class ExpensesEndpoints
             {
                 return Results.Unauthorized();
             }
-            var result = await service.DeleteAsync(userId, id, ct);
+
+            // Query param parseado à mão (sem JsonStringEnumConverter): aceita
+            // 'this'/'this_and_following' (case-insensitive), default This.
+            var scopeEnum = RecurrenceScope.This;
+            if (!string.IsNullOrWhiteSpace(scope))
+            {
+                if (!TryParseScope(scope, out scopeEnum))
+                {
+                    return Results.Json(
+                        new
+                        {
+                            error = "invalid_scope",
+                            message = "Scope deve ser 'this' ou 'this_and_following'.",
+                        },
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+            }
+
+            var result = await service.DeleteAsync(userId, id, scopeEnum, ct);
             return result.IsSuccess
                 ? Results.NoContent()
                 : ToHttpResult(result);
         });
 
         return app;
+    }
+
+    // Aceita 'this' e 'this_and_following' (snake_case, case-insensitive), além
+    // dos nomes do enum. Enum.TryParse não casa o underscore sozinho.
+    private static bool TryParseScope(string value, out RecurrenceScope scope)
+    {
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "this":
+                scope = RecurrenceScope.This;
+                return true;
+            case "this_and_following":
+            case "thisandfollowing":
+                scope = RecurrenceScope.ThisAndFollowing;
+                return true;
+            default:
+                scope = RecurrenceScope.This;
+                return false;
+        }
     }
 
     private static IResult ToHttpResult<T>(OperationResult<T> result)

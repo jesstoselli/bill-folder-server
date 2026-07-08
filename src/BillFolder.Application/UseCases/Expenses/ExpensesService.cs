@@ -317,7 +317,7 @@ public class ExpensesService
     }
 
     public async Task<OperationResult<bool>> DeleteAsync(
-        Guid userId, Guid id, CancellationToken ct = default)
+        Guid userId, Guid id, RecurrenceScope scope = RecurrenceScope.This, CancellationToken ct = default)
     {
         var expense = await _db.Expenses
             .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
@@ -327,7 +327,31 @@ public class ExpensesService
             return OperationResult.Fail<bool>("not_found", "Despesa não encontrada.");
         }
 
-        _db.Expenses.Remove(expense);
+        // ThisAndFollowing só faz sentido em despesa recorrente (com TemplateId):
+        // apaga esta + as ocorrências seguintes ainda não pagas E encerra o template
+        // (IsActive = false) pra parar a geração futura. Sem TemplateId, cai no This.
+        if (scope == RecurrenceScope.ThisAndFollowing && expense.TemplateId is { } templateId)
+        {
+            var siblings = await _db.Expenses
+                .Where(e => e.UserId == userId && e.TemplateId == templateId)
+                .ToListAsync(ct);
+
+            var idsToDelete = OccurrencesToDelete(siblings, expense, scope);
+            var toDelete = siblings.Where(e => idsToDelete.Contains(e.Id));
+            _db.Expenses.RemoveRange(toDelete);
+
+            var template = await _db.ExpenseRecurrences
+                .FirstOrDefaultAsync(r => r.Id == templateId && r.UserId == userId, ct);
+            if (template is not null)
+            {
+                template.IsActive = false;
+            }
+        }
+        else
+        {
+            _db.Expenses.Remove(expense);
+        }
+
         await _db.SaveChangesAsync(ct);
 
         return OperationResult.Ok(true);
