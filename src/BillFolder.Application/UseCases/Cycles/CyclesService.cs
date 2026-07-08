@@ -179,6 +179,10 @@ public class CyclesService
         // materializa a despesa provisionada do ciclo pra cada template Weekly ativo.
         await ProvisionedExpenseExpansion.ExpandForCycleAsync(_db, cycle, ct);
 
+        // Idem pras assinaturas mensais de cartão (Netflix, Spotify): materializa
+        // a cobrança do ciclo pra cada CardEntryRecurrence ativo.
+        await CardEntryRecurrenceExpansion.ExpandForCycleAsync(_db, cycle, ct);
+
         // Rolling window: gera 11 ciclos consecutivos à frente pra o user
         // ter 12 meses de janela sem precisar criar cada um manualmente. Se
         // ele deixar o app parado por 12 meses, o safety-net do
@@ -276,6 +280,7 @@ public class CyclesService
 
             await IncomeSourceExpansion.ExpandForCycleAsync(_db, next, ct);
             await ProvisionedExpenseExpansion.ExpandForCycleAsync(_db, next, ct);
+            await CardEntryRecurrenceExpansion.ExpandForCycleAsync(_db, next, ct);
 
             previous = next;
             generated++;

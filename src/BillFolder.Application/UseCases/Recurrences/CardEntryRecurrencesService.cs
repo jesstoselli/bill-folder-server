@@ -112,6 +112,11 @@ public class CardEntryRecurrencesService
         _db.CardEntryRecurrences.Add(rec);
         await _db.SaveChangesAsync(ct);
 
+        // Auto-gera a cobrança nos ciclos existentes que o template cobre
+        // (espelha ExpenseRecurrencesService pras despesas provisionadas).
+        await CardEntryRecurrenceExpansion.ExpandForTemplateAsync(_db, rec, ct);
+        await _db.SaveChangesAsync(ct);
+
         var created = await _db.CardEntryRecurrences
             .AsNoTracking()
             .Include(r => r.Card)
