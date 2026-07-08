@@ -29,6 +29,17 @@ public class CreateExpenseRequestValidator : AbstractValidator<CreateExpenseRequ
     }
 }
 
+public class RepriceProvisionedExpenseRequestValidator
+    : AbstractValidator<RepriceProvisionedExpenseRequest>
+{
+    public RepriceProvisionedExpenseRequestValidator()
+    {
+        RuleFor(x => x.Amount)
+            .GreaterThan(0)
+            .WithMessage("Valor por sessão deve ser maior que zero.");
+    }
+}
+
 public class UpdateExpenseRequestValidator : AbstractValidator<UpdateExpenseRequest>
 {
     public UpdateExpenseRequestValidator()

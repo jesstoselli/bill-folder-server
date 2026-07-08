@@ -31,6 +31,15 @@ public sealed record PayOccurrenceRequest(
     decimal? Amount,
     Guid? PaidFromAccountId);
 
+/// <summary>Body do POST /v1/expenses/{id}/update-amount — reajusta o valor
+/// POR SESSÃO (OccurrenceAmount) de uma despesa provisionada. O total do mês
+/// (ExpectedAmount) é recalculado = novo valor × nº de ocorrências. O escopo
+/// decide o alcance: só esta ocorrência, ou esta + as futuras não-pagas (que
+/// também atualiza o DefaultAmount do template pra ciclos futuros).</summary>
+public sealed record RepriceProvisionedExpenseRequest(
+    decimal Amount,
+    RecurrenceScope Scope);
+
 public sealed record CreateExpenseRequest(
     DateOnly DueDate,
     string Label,

@@ -112,6 +112,22 @@ public static class ExpensesEndpoints
             return ToHttpResult(result);
         });
 
+        // Reajusta o valor por sessão de uma despesa provisionada (escopo no corpo).
+        group.MapPost("/{id:guid}/update-amount", async (
+            Guid id,
+            RepriceProvisionedExpenseRequest request,
+            ClaimsPrincipal principal,
+            ExpensesService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            var result = await service.RepriceProvisionedExpenseAsync(userId, id, request, ct);
+            return ToHttpResult(result);
+        });
+
         group.MapDelete("/{id:guid}", async (
             Guid id,
             string? scope,

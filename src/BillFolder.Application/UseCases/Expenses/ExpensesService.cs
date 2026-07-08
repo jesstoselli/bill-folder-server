@@ -13,15 +13,18 @@ public class ExpensesService
     private readonly IApplicationDbContext _db;
     private readonly IValidator<CreateExpenseRequest> _createValidator;
     private readonly IValidator<UpdateExpenseRequest> _updateValidator;
+    private readonly IValidator<RepriceProvisionedExpenseRequest> _repriceValidator;
 
     public ExpensesService(
         IApplicationDbContext db,
         IValidator<CreateExpenseRequest> createValidator,
-        IValidator<UpdateExpenseRequest> updateValidator)
+        IValidator<UpdateExpenseRequest> updateValidator,
+        IValidator<RepriceProvisionedExpenseRequest> repriceValidator)
     {
         _db = db;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _repriceValidator = repriceValidator;
     }
 
     public async Task<List<ExpenseResponse>> ListAsync(
@@ -165,6 +168,16 @@ public class ExpensesService
             return OperationResult.Fail<ExpenseResponse>(
                 "provisioned_expense",
                 "Despesa provisionada é quitada por ocorrência, não diretamente.");
+        }
+
+        // Editar o total (ExpectedAmount) numa provisionada quebraria o invariante
+        // ExpectedAmount = OccurrenceAmount × OccurrencesTotal. O reajuste é feito por
+        // sessão via RepriceProvisionedExpenseAsync (o app roteia pro fluxo certo).
+        if (request.ExpectedAmount.HasValue && expense.OccurrencesTotal is not null)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "provisioned_expense",
+                "Despesa provisionada é reajustada por sessão, não pelo valor total.");
         }
 
         // Account ownership check
@@ -316,6 +329,75 @@ public class ExpensesService
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 
+    /// <summary>
+    /// Reajusta o valor POR SESSÃO (OccurrenceAmount) de uma despesa provisionada.
+    /// This → só esta ocorrência. ThisAndFollowing → esta + as futuras não-pagas do
+    /// mesmo template, e atualiza o DefaultAmount do template pra ciclos futuros.
+    /// O total (ExpectedAmount) de cada ocorrência recalcula = valor × OccurrencesTotal
+    /// dela. PaidToDate/OccurrencesPaid ficam — a reserva se ajusta sozinha.
+    /// </summary>
+    public async Task<OperationResult<ExpenseResponse>> RepriceProvisionedExpenseAsync(
+        Guid userId, Guid id, RepriceProvisionedExpenseRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await _repriceValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "validation_error", validation.Errors[0].ErrorMessage);
+        }
+
+        var expense = await _db.Expenses
+            .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
+
+        if (expense is null)
+        {
+            return OperationResult.Fail<ExpenseResponse>("not_found", "Despesa não encontrada.");
+        }
+
+        if (expense.OccurrencesTotal is null)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "not_provisioned", "Despesa não é provisionada (sem ocorrências).");
+        }
+
+        if (request.Scope == RecurrenceScope.ThisAndFollowing && expense.TemplateId is { } templateId)
+        {
+            var siblings = await _db.Expenses
+                .Where(e => e.UserId == userId && e.TemplateId == templateId)
+                .ToListAsync(ct);
+
+            var idsToReprice = OccurrencesToReprice(siblings, expense, request.Scope);
+            foreach (var occurrence in siblings.Where(e => idsToReprice.Contains(e.Id)))
+            {
+                RepriceOccurrence(occurrence, request.Amount);
+            }
+
+            var template = await _db.ExpenseRecurrences
+                .FirstOrDefaultAsync(r => r.Id == templateId && r.UserId == userId, ct);
+            if (template is not null)
+            {
+                template.DefaultAmount = request.Amount;
+            }
+        }
+        else
+        {
+            RepriceOccurrence(expense, request.Amount);
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        var updated = await _db.Expenses
+            .AsNoTracking()
+            .Include(e => e.Category)
+            .Include(e => e.PaidFromAccount)
+            .FirstAsync(e => e.Id == id, ct);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        return OperationResult.Ok(MapToResponse(updated, today));
+    }
+
     public async Task<OperationResult<bool>> DeleteAsync(
         Guid userId, Guid id, RecurrenceScope scope = RecurrenceScope.This, CancellationToken ct = default)
     {
@@ -370,9 +452,20 @@ public class ExpensesService
     /// Puro (sem DB) — testado como ComputeExpenseBuckets.
     /// </summary>
     internal static IReadOnlyCollection<Guid> OccurrencesToDelete(
-        IReadOnlyCollection<Expense> templateOccurrences,
-        Expense target,
-        RecurrenceScope scope)
+        IReadOnlyCollection<Expense> templateOccurrences, Expense target, RecurrenceScope scope)
+        => OccurrencesInScope(templateOccurrences, target, scope);
+
+    /// <summary>Ocorrências que recebem o novo valor num reajuste, dado o escopo.
+    /// Mesma regra do <see cref="OccurrencesToDelete"/>.</summary>
+    internal static IReadOnlyCollection<Guid> OccurrencesToReprice(
+        IReadOnlyCollection<Expense> templateOccurrences, Expense target, RecurrenceScope scope)
+        => OccurrencesInScope(templateOccurrences, target, scope);
+
+    // Núcleo compartilhado por delete e reprice: dado o escopo, retorna os ids das
+    // ocorrências afetadas. This → só a alvo. ThisAndFollowing → a alvo + as com
+    // DueDate >= alvo que ainda não estão pagas (Paid ficam de fora).
+    private static IReadOnlyCollection<Guid> OccurrencesInScope(
+        IReadOnlyCollection<Expense> templateOccurrences, Expense target, RecurrenceScope scope)
     {
         ArgumentNullException.ThrowIfNull(templateOccurrences);
         ArgumentNullException.ThrowIfNull(target);
@@ -391,6 +484,20 @@ public class ExpensesService
             }
         }
         return ids;
+    }
+
+    /// <summary>
+    /// Aplica o novo valor POR SESSÃO a uma ocorrência provisionada: OccurrenceAmount
+    /// recebe o valor e ExpectedAmount (total do ciclo) recalcula = valor ×
+    /// OccurrencesTotal dela (ciclos de 4 ou 5 semanas usam o próprio total).
+    /// PaidToDate/OccurrencesPaid ficam — a reserva (ExpectedAmount − PaidToDate)
+    /// se ajusta sozinha. Puro (sem DB) — testado.
+    /// </summary>
+    internal static void RepriceOccurrence(Expense occurrence, decimal amount)
+    {
+        ArgumentNullException.ThrowIfNull(occurrence);
+        occurrence.OccurrenceAmount = amount;
+        occurrence.ExpectedAmount = amount * (occurrence.OccurrencesTotal ?? 1);
     }
 
     private static string? NormalizeOptional(string? value)
