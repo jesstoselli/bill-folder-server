@@ -7,6 +7,8 @@ public sealed record SavingsAccountResponse(
     string Branch,
     string AccountNumber,
     decimal InitialBalance,
+    // Saldo corrente = InitialBalance + Σ transações com sinal (SavingsBalance).
+    decimal CurrentBalance,
     DateTime CreatedAt,
     DateTime UpdatedAt);
 

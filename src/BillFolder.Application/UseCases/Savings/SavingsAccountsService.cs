@@ -26,14 +26,34 @@ public class SavingsAccountsService
     public async Task<List<SavingsAccountResponse>> ListAsync(
         Guid userId, CancellationToken ct = default)
     {
-        return await _db.SavingsAccounts
+        var accounts = await _db.SavingsAccounts
             .AsNoTracking()
             .Where(s => s.UserId == userId)
             .OrderBy(s => s.BankName)
-            .Select(s => new SavingsAccountResponse(
-                s.Id, s.CheckingAccountId, s.BankName, s.Branch!, s.AccountNumber!,
-                s.InitialBalance, s.CreatedAt, s.UpdatedAt))
             .ToListAsync(ct);
+
+        if (accounts.Count == 0)
+        {
+            return [];
+        }
+
+        // Uma query flat de todas as transações do user, agrupada em memória
+        // por conta (volume modesto num app pessoal; evita o quirk de
+        // Include+Sum aninhado do EF).
+        var txnsByAccount = (await _db.SavingsTransactions
+                .AsNoTracking()
+                .Where(t => t.UserId == userId)
+                .ToListAsync(ct))
+            .GroupBy(t => t.SavingsAccountId)
+            .ToDictionary(g => g.Key, g => (IEnumerable<SavingsTransaction>)g.ToList());
+
+        return accounts
+            .Select(a => MapToResponse(
+                a,
+                SavingsBalance.Compute(
+                    a.InitialBalance,
+                    txnsByAccount.GetValueOrDefault(a.Id, Array.Empty<SavingsTransaction>()))))
+            .ToList();
     }
 
     public async Task<OperationResult<SavingsAccountResponse>> GetAsync(
@@ -43,9 +63,13 @@ public class SavingsAccountsService
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId, ct);
 
-        return account is null
-            ? OperationResult.Fail<SavingsAccountResponse>("not_found", "Poupança não encontrada.")
-            : OperationResult.Ok(MapToResponse(account));
+        if (account is null)
+        {
+            return OperationResult.Fail<SavingsAccountResponse>("not_found", "Poupança não encontrada.");
+        }
+
+        var balance = await ComputeBalanceAsync(account.Id, account.InitialBalance, ct);
+        return OperationResult.Ok(MapToResponse(account, balance));
     }
 
     public async Task<OperationResult<SavingsAccountResponse>> CreateAsync(
@@ -94,7 +118,8 @@ public class SavingsAccountsService
         _db.SavingsAccounts.Add(account);
         await _db.SaveChangesAsync(ct);
 
-        return OperationResult.Ok(MapToResponse(account));
+        // Conta recém-criada não tem transações → saldo = InitialBalance.
+        return OperationResult.Ok(MapToResponse(account, account.InitialBalance));
     }
 
     public async Task<OperationResult<SavingsAccountResponse>> UpdateAsync(
@@ -137,7 +162,8 @@ public class SavingsAccountsService
 
         await _db.SaveChangesAsync(ct);
 
-        return OperationResult.Ok(MapToResponse(account));
+        var balance = await ComputeBalanceAsync(account.Id, account.InitialBalance, ct);
+        return OperationResult.Ok(MapToResponse(account, balance));
     }
 
     public async Task<OperationResult<bool>> DeleteAsync(
@@ -157,7 +183,18 @@ public class SavingsAccountsService
         return OperationResult.Ok(true);
     }
 
-    private static SavingsAccountResponse MapToResponse(SavingsAccount s) =>
+    private static SavingsAccountResponse MapToResponse(SavingsAccount s, decimal currentBalance) =>
         new(s.Id, s.CheckingAccountId, s.BankName, s.Branch!, s.AccountNumber!,
-            s.InitialBalance, s.CreatedAt, s.UpdatedAt);
+            s.InitialBalance, currentBalance, s.CreatedAt, s.UpdatedAt);
+
+    /// <summary>Carrega as transações da conta e calcula o saldo corrente.</summary>
+    private async Task<decimal> ComputeBalanceAsync(
+        Guid accountId, decimal initialBalance, CancellationToken ct)
+    {
+        var txns = await _db.SavingsTransactions
+            .AsNoTracking()
+            .Where(t => t.SavingsAccountId == accountId)
+            .ToListAsync(ct);
+        return SavingsBalance.Compute(initialBalance, txns);
+    }
 }
