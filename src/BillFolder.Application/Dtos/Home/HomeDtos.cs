@@ -56,7 +56,13 @@ public sealed record HomeUpcomingExpenseDto(
     DateOnly DueDate,
     decimal ExpectedAmount,
     ExpenseStatus Status,
-    string CategoryName);
+    string CategoryName,
+    // Provisionamento (null/0 em despesas normais): deixa o app mostrar o
+    // reservado que resta (ExpectedAmount − PaidToDate) e o progresso (K/N)
+    // numa provisionada em andamento, igual à tela de Despesas.
+    int? OccurrencesTotal,
+    int OccurrencesPaid,
+    decimal PaidToDate);
 
 public sealed record HomeCardStatementDto(
     Guid Id,

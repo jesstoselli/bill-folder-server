@@ -108,7 +108,10 @@ public class HomeService
                 e.DueDate,
                 e.ExpectedAmount,
                 e.ComputeDisplayStatus(today),
-                e.Category.NamePt))
+                e.Category.NamePt,
+                e.OccurrencesTotal,
+                e.OccurrencesPaid,
+                e.PaidToDate))
             .ToList();
 
         // 5. Faturas que vencem no ciclo
