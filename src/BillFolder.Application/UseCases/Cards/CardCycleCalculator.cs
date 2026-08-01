@@ -15,9 +15,11 @@ public static class CardCycleCalculator
         short closingDay,
         short dueDay)
     {
-        // Se compra cai antes/no dia de fechamento, entra na fatura desse mês.
-        // Senão, entra na fatura do mês seguinte.
-        var (closeYear, closeMonth) = purchaseDate.Day <= closingDay
+        // Compra só entra na fatura deste mês se for antes do fechamento já
+        // clampeado. No dia de fechamento (inclusive no fim de mês clampeado),
+        // entra na fatura seguinte.
+        var candidatePeriodEnd = ClampDay(purchaseDate.Year, purchaseDate.Month, closingDay);
+        var (closeYear, closeMonth) = purchaseDate < candidatePeriodEnd
             ? (purchaseDate.Year, purchaseDate.Month)
             : AddMonths(purchaseDate.Year, purchaseDate.Month, 1);
 

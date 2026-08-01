@@ -199,6 +199,8 @@ public class CardEntriesService
     public async Task<OperationResult<bool>> DeleteAsync(
         Guid userId, Guid id, RecurrenceScope scope = RecurrenceScope.This, CancellationToken ct = default)
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+
         var entry = await _db.CardEntries
             .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
 
@@ -217,7 +219,7 @@ public class CardEntriesService
                 .Include(e => e.Installments).ThenInclude(i => i.Statement)
                 .ToListAsync(ct);
 
-            var statusByEntryId = SubscriptionStatementStatuses(siblings);
+            var statusByEntryId = SubscriptionStatementStatuses(siblings, today);
 
             var idsToDelete = SubscriptionOccurrencesToDelete(siblings, entry, scope, statusByEntryId);
             var toDelete = siblings.Where(e => idsToDelete.Contains(e.Id));
@@ -256,6 +258,8 @@ public class CardEntriesService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+
         var validation = await _updateAmountValidator.ValidateAsync(request, ct);
         if (!validation.IsValid)
         {
@@ -288,7 +292,7 @@ public class CardEntriesService
                 .Include(e => e.Installments).ThenInclude(i => i.Statement)
                 .ToListAsync(ct);
 
-            var statusByEntryId = SubscriptionStatementStatuses(siblings);
+            var statusByEntryId = SubscriptionStatementStatuses(siblings, today);
             var idsToReprice = SubscriptionOccurrencesToReprice(siblings, entry, request.Scope, statusByEntryId);
 
             foreach (var sibling in siblings.Where(e => idsToReprice.Contains(e.Id)))
@@ -415,11 +419,13 @@ public class CardEntriesService
 
     /// <summary>
     /// Mapeia cada assinatura (CardEntry com uma única installment) ao status da sua
-    /// fatura. Assume entries com Installments+Statement já carregados. Entries sem
-    /// installment (não deveria acontecer numa assinatura) ficam de fora do dicionário.
+    /// fatura calculado para a data informada. Assume entries com Installments+Statement
+    /// já carregados. Entries sem installment (não deveria acontecer numa assinatura)
+    /// ficam de fora do dicionário.
     /// </summary>
     private static Dictionary<Guid, CardStatementStatus> SubscriptionStatementStatuses(
-        IEnumerable<CardEntry> entries)
+        IEnumerable<CardEntry> entries,
+        DateOnly today)
     {
         var map = new Dictionary<Guid, CardStatementStatus>();
         foreach (var entry in entries)
@@ -427,7 +433,7 @@ public class CardEntriesService
             var statement = entry.Installments.FirstOrDefault()?.Statement;
             if (statement is not null)
             {
-                map[entry.Id] = statement.Status;
+                map[entry.Id] = statement.EffectiveStatus(today);
             }
         }
         return map;
