@@ -7,7 +7,11 @@ ALTER TABLE card_statements ADD COLUMN IF NOT EXISTS paid_from_account_id UUID;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_card_statements_paid_from_account'
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_card_statements_paid_from_account'
+          AND conrelid = 'public.card_statements'::regclass
+          AND contype = 'f'
     ) THEN
         ALTER TABLE card_statements
             ADD CONSTRAINT fk_card_statements_paid_from_account
