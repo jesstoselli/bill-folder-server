@@ -19,6 +19,9 @@ public class CardStatementConfiguration : IEntityTypeConfiguration<CardStatement
         builder.Property(x => x.Status)
             .HasColumnName("status")
             .HasColumnType("card_statement_status");
+        builder.Property(x => x.PaidDate).HasColumnName("paid_date");
+        builder.Property(x => x.ActualAmount).HasColumnName("actual_amount").HasColumnType("numeric(12,2)");
+        builder.Property(x => x.PaidFromAccountId).HasColumnName("paid_from_account_id");
         builder.Property(x => x.LinkedExpenseId).HasColumnName("linked_expense_id");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
@@ -38,7 +41,14 @@ public class CardStatementConfiguration : IEntityTypeConfiguration<CardStatement
             .HasForeignKey(x => x.LinkedExpenseId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasOne(x => x.PaidFromAccount)
+            .WithMany()
+            .HasForeignKey(x => x.PaidFromAccountId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName("fk_card_statements_paid_from_account");
+
         builder.HasIndex(x => new { x.CardId, x.DueDate }).HasDatabaseName("ix_card_statements_card_due");
         builder.HasIndex(x => x.UserId).HasDatabaseName("ix_card_statements_user");
+        builder.HasIndex(x => x.PaidFromAccountId).HasDatabaseName("ix_card_statements_paid_from_account");
     }
 }

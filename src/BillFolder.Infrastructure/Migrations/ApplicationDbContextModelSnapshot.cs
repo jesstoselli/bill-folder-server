@@ -182,6 +182,10 @@ namespace BillFolder.Infrastructure.Migrations
 
             modelBuilder.Entity("BillFolder.Domain.Entities.CardStatement", b =>
                 {
+                    b.Property<decimal?>("ActualAmount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("actual_amount");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
@@ -205,6 +209,14 @@ namespace BillFolder.Infrastructure.Migrations
                     b.Property<Guid?>("LinkedExpenseId")
                         .HasColumnType("uuid")
                         .HasColumnName("linked_expense_id");
+
+                    b.Property<DateOnly?>("PaidDate")
+                        .HasColumnType("date")
+                        .HasColumnName("paid_date");
+
+                    b.Property<Guid?>("PaidFromAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("paid_from_account_id");
 
                     b.Property<DateOnly>("PeriodEnd")
                         .HasColumnType("date")
@@ -231,6 +243,9 @@ namespace BillFolder.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("LinkedExpenseId");
+
+                    b.HasIndex("PaidFromAccountId")
+                        .HasDatabaseName("ix_card_statements_paid_from_account");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_card_statements_user");
@@ -1279,6 +1294,12 @@ namespace BillFolder.Infrastructure.Migrations
                         .HasForeignKey("LinkedExpenseId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("BillFolder.Domain.Entities.CheckingAccount", "PaidFromAccount")
+                        .WithMany()
+                        .HasForeignKey("PaidFromAccountId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_card_statements_paid_from_account");
+
                     b.HasOne("BillFolder.Domain.Entities.User", "User")
                         .WithMany("CardStatements")
                         .HasForeignKey("UserId")
@@ -1288,6 +1309,8 @@ namespace BillFolder.Infrastructure.Migrations
                     b.Navigation("Card");
 
                     b.Navigation("LinkedExpense");
+
+                    b.Navigation("PaidFromAccount");
 
                     b.Navigation("User");
                 });

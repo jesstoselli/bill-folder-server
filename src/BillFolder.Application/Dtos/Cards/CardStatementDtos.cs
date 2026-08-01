@@ -10,6 +10,10 @@ public sealed record CardStatementResponse(
     DateOnly PeriodEnd,
     DateOnly DueDate,
     CardStatementStatus Status,
+    DateOnly? PaidDate,
+    decimal? ActualAmount,
+    Guid? PaidFromAccountId,
+    string? PaidFromAccountName,
     decimal TotalAmount,
     int InstallmentsCount,
     Guid? LinkedExpenseId,
@@ -24,6 +28,10 @@ public sealed record CardStatementDetailResponse(
     DateOnly PeriodEnd,
     DateOnly DueDate,
     CardStatementStatus Status,
+    DateOnly? PaidDate,
+    decimal? ActualAmount,
+    Guid? PaidFromAccountId,
+    string? PaidFromAccountName,
     decimal TotalAmount,
     Guid? LinkedExpenseId,
     DateTime CreatedAt,
@@ -39,5 +47,7 @@ public sealed record StatementInstallmentDto(
     string Label,
     string CategoryName);
 
-public sealed record UpdateCardStatementRequest(
-    CardStatementStatus? Status);
+public sealed record PayCardStatementRequest(
+    DateOnly PaidDate,
+    decimal ActualAmount,
+    Guid? PaidFromAccountId);

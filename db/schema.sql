@@ -215,12 +215,18 @@ CREATE TABLE card_statements (
     period_end          DATE                    NOT NULL,
     due_date            DATE                    NOT NULL,
     status              card_statement_status   NOT NULL DEFAULT 'open',
+    paid_date           DATE,
+    actual_amount       NUMERIC(12,2),
+    paid_from_account_id UUID,
     linked_expense_id   UUID,  -- FK adicionada após criar expenses
     created_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW()
+    updated_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_card_statements_paid_from_account
+        FOREIGN KEY (paid_from_account_id) REFERENCES checking_accounts(id) ON DELETE SET NULL
 );
 CREATE INDEX ix_card_statements_card_due ON card_statements (card_id, due_date);
 CREATE INDEX ix_card_statements_user ON card_statements (user_id);
+CREATE INDEX ix_card_statements_paid_from_account ON card_statements (paid_from_account_id);
 CREATE TRIGGER card_statements_set_updated_at BEFORE UPDATE ON card_statements
     FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 

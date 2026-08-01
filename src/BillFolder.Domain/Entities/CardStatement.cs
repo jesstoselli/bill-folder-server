@@ -11,6 +11,9 @@ public class CardStatement
     public DateOnly PeriodEnd { get; set; }
     public DateOnly DueDate { get; set; }
     public CardStatementStatus Status { get; set; } = CardStatementStatus.Open;
+    public DateOnly? PaidDate { get; set; }
+    public decimal? ActualAmount { get; set; }
+    public Guid? PaidFromAccountId { get; set; }
     public Guid? LinkedExpenseId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -18,6 +21,7 @@ public class CardStatement
     // Navigations
     public User User { get; set; } = null!;
     public CreditCardAccount Card { get; set; } = null!;
+    public CheckingAccount? PaidFromAccount { get; set; }
     public Expense? LinkedExpense { get; set; }
     public ICollection<Installment> Installments { get; set; } = new List<Installment>();
     public ICollection<Expense> RelatedExpenses { get; set; } = new List<Expense>(); // expenses.linked_card_statement_id

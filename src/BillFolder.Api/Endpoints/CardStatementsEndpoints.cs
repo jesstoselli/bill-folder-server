@@ -63,9 +63,9 @@ public static class CardStatementsEndpoints
             return ToHttpResult(result);
         });
 
-        group.MapPatch("/{id:guid}", async (
+        group.MapPost("/{id:guid}/pay", async (
             Guid id,
-            UpdateCardStatementRequest request,
+            PayCardStatementRequest request,
             ClaimsPrincipal principal,
             CardStatementsService service,
             CancellationToken ct) =>
@@ -74,7 +74,7 @@ public static class CardStatementsEndpoints
             {
                 return Results.Unauthorized();
             }
-            var result = await service.UpdateStatusAsync(userId, id, request, ct);
+            var result = await service.PayAsync(userId, id, request, ct);
             return ToHttpResult(result);
         });
 
@@ -91,6 +91,9 @@ public static class CardStatementsEndpoints
         var status = result.ErrorCode switch
         {
             "validation_error" => StatusCodes.Status400BadRequest,
+            "statement_open"   => StatusCodes.Status400BadRequest,
+            "statement_paid"   => StatusCodes.Status400BadRequest,
+            "invalid_account"  => StatusCodes.Status400BadRequest,
             "not_found"        => StatusCodes.Status404NotFound,
             _                  => StatusCodes.Status400BadRequest,
         };
