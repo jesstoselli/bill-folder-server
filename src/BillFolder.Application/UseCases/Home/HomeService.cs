@@ -1,9 +1,11 @@
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Home;
+using BillFolder.Application.UseCases.Cards;
 using BillFolder.Domain.Entities;
 using BillFolder.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using System.Runtime.InteropServices;
 
 namespace BillFolder.Application.UseCases.Home;
 
@@ -138,6 +140,8 @@ public class HomeService
                 CardName = s.Card.Name,
                 s.DueDate,
                 s.Status,
+                s.PeriodEnd,
+                s.ActualAmount,
                 // SUM(amount) executado no Postgres, retorna decimal.
                 // Nullable pra cobrir statement sem installments (evita
                 // "sequence contains no elements").
@@ -155,18 +159,30 @@ public class HomeService
             })
             .ToListAsync(ct);
 
-        var expectedCardStatements = statementProjections
-            .Where(s => s.Status != CardStatementStatus.Paid)
-            .Sum(s => s.Total);
+        var statementsWithEffectiveStatus = statementProjections
+            .Select(s => new
+            {
+                Statement = s,
+                EffectiveStatus = CardStatementExtensions.EffectiveStatus(s.Status, s.PeriodEnd, today),
+            })
+            .ToList();
 
-        var cardStatementsInCycle = statementProjections
+        var cardStatementBuckets = ComputeCardStatementBuckets(
+            statementsWithEffectiveStatus
+                .Select(s => new HomeStatementFinancialProjection(
+                    s.EffectiveStatus,
+                    s.Statement.Total,
+                    s.Statement.ActualAmount))
+                .ToList());
+
+        var cardStatementsInCycle = statementsWithEffectiveStatus
             .Select(s => new HomeCardStatementDto(
-                s.Id,
-                s.CardId,
-                s.CardName,
-                s.DueDate,
-                s.Total,
-                s.Status))
+                s.Statement.Id,
+                s.Statement.CardId,
+                s.Statement.CardName,
+                s.Statement.DueDate,
+                s.Statement.Total,
+                s.EffectiveStatus))
             .ToList();
 
         // 6. Daily expenses no ciclo
@@ -213,17 +229,16 @@ public class HomeService
         //   - Só somava expectedExpenses (filtra Status != Paid) e ignorava
         //     paidExpenses — expense paga "sumia" do cálculo, mesmo tendo
         //     saído da conta na vida real.
-        //   - expectedCardStatements filtra faturas não-pagas — faturas
-        //     pagas sumiam pelo mesmo motivo. Aqui somamos TODAS as
-        //     installments do ciclo (pagas ou não).
-        var totalCardCharges = statementProjections.Sum(s => s.Total);
+        //   - Faturas não-pagas reservam o valor total das parcelas; as
+        //     pagas realizam o valor efetivo. Os dois buckets compõem o
+        //     comprometido no ciclo sem fazer fatura paga sumir do cálculo.
 
         var remaining = checkingTotal
                       + expectedIncome
                       + adjustmentsInflows
                       - paidExpenses
                       - expectedExpenses
-                      - totalCardCharges
+                      - cardStatementBuckets.TotalCommitted
                       - dailyExpensesSpent
                       - adjustmentsOutflows;
 
@@ -242,9 +257,10 @@ public class HomeService
                 ReceivedIncome: receivedIncome,
                 ExpectedExpenses: expectedExpenses,
                 PaidExpenses: paidExpenses,
-                ExpectedCardStatements: expectedCardStatements,
+                ExpectedCardStatements: cardStatementBuckets.Expected,
                 DailyExpensesSpent: dailyExpensesSpent,
-                Remaining: remaining),
+                Remaining: remaining,
+                PaidCardStatements: cardStatementBuckets.Paid),
             IncomeBreakdown: incomeBreakdown,
             ExpenseBreakdown: expenseBreakdown,
             UpcomingExpenses: upcomingExpenses,
@@ -302,6 +318,22 @@ public class HomeService
             .Sum(e => e.PaidToDate);
 
         return (reserved, realized);
+    }
+
+    internal static CardStatementBuckets ComputeCardStatementBuckets(
+        IReadOnlyCollection<HomeStatementFinancialProjection> statements)
+    {
+        ArgumentNullException.ThrowIfNull(statements);
+
+        var expected = statements
+            .Where(s => s.Status != CardStatementStatus.Paid)
+            .Sum(s => s.Total);
+
+        var paid = statements
+            .Where(s => s.Status == CardStatementStatus.Paid)
+            .Sum(s => s.ActualAmount ?? s.Total);
+
+        return new CardStatementBuckets(expected, paid, expected + paid);
     }
 
     internal static List<HomeCategoryBreakdownDto> BuildCategoryBreakdown(
@@ -371,3 +403,14 @@ internal sealed record HomeStatementCategoryProjection(
     Guid CategoryId,
     string CategoryKey,
     string CategoryName);
+
+internal sealed record HomeStatementFinancialProjection(
+    CardStatementStatus Status,
+    decimal Total,
+    decimal? ActualAmount);
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly record struct CardStatementBuckets(
+    decimal Expected,
+    decimal Paid,
+    decimal TotalCommitted);

@@ -37,7 +37,8 @@ public sealed record HomeBalanceDto(
     decimal PaidExpenses,
     decimal ExpectedCardStatements,
     decimal DailyExpensesSpent,
-    decimal Remaining);
+    decimal Remaining,
+    decimal PaidCardStatements);
 
 public sealed record HomeIncomeBreakdownDto(
     int Expected,
