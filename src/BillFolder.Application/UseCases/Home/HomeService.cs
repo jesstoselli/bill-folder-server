@@ -62,9 +62,7 @@ public class HomeService
                      && e.ExpectedDate <= cycle.EndDate)
             .ToListAsync(ct);
 
-        var expectedIncome = incomeEntries
-            .Where(e => e.Status != IncomeStatus.NotOccurred)
-            .Sum(e => e.ExpectedAmount);
+        var expectedIncome = ComputeExpectedIncome(incomeEntries);
 
         var receivedIncome = incomeEntries
             .Where(e => e.Status == IncomeStatus.Received)
@@ -299,6 +297,24 @@ public class HomeService
     /// Invariante: por despesa provisionada, Reserved + Realized = ExpectedAmount
     /// enquanto não quitada (protege o mês cheio sem contar em dobro o já-pago).
     /// </summary>
+    /// <summary>
+    /// Soma o "esperado no mês" pelo valor EFETIVO de cada entry: entry já
+    /// recebida vale o ActualAmount (o que realmente entrou, com fallback pro
+    /// ExpectedAmount se nulo); as demais valem o ExpectedAmount. NotOccurred
+    /// é excluída. Sem isso, renda reduzida no mês (ex: férias) continuava
+    /// contando cheia — inflando `remaining` e o total da tela de recebimentos.
+    /// </summary>
+    internal static decimal ComputeExpectedIncome(IEnumerable<IncomeEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        return entries
+            .Where(e => e.Status != IncomeStatus.NotOccurred)
+            .Sum(e => e.Status == IncomeStatus.Received
+                ? e.ActualAmount ?? e.ExpectedAmount
+                : e.ExpectedAmount);
+    }
+
     internal static (decimal Reserved, decimal Realized) ComputeExpenseBuckets(
         IReadOnlyCollection<Expense> expenses)
     {
