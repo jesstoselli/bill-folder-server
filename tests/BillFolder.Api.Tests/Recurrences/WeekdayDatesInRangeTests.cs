@@ -18,7 +18,7 @@ public class WeekdayDatesInRangeTests
 
         for (var wd = 0; wd < 7; wd++)
         {
-            var dates = ProvisionedExpenseExpansion.WeekdayDatesInRange(start, end, wd);
+            var dates = ExpenseRecurrenceExpansion.WeekdayDatesInRange(start, end, wd);
             Assert.Equal(4, dates.Count);
         }
     }
@@ -32,7 +32,7 @@ public class WeekdayDatesInRangeTests
         var counts = new List<int>();
         for (var wd = 0; wd < 7; wd++)
         {
-            counts.Add(ProvisionedExpenseExpansion.WeekdayDatesInRange(start, end, wd).Count);
+            counts.Add(ExpenseRecurrenceExpansion.WeekdayDatesInRange(start, end, wd).Count);
         }
 
         Assert.Equal(31, counts.Sum());
@@ -48,7 +48,7 @@ public class WeekdayDatesInRangeTests
 
         for (var wd = 0; wd < 7; wd++)
         {
-            Assert.Single(ProvisionedExpenseExpansion.WeekdayDatesInRange(start, end, wd));
+            Assert.Single(ExpenseRecurrenceExpansion.WeekdayDatesInRange(start, end, wd));
         }
     }
 
@@ -60,7 +60,7 @@ public class WeekdayDatesInRangeTests
         // Usa o próprio dia-da-semana do dia 1 como alvo → primeira ocorrência é o dia 1.
         var targetWeekday = (int)start.DayOfWeek;
 
-        var dates = ProvisionedExpenseExpansion.WeekdayDatesInRange(start, end, targetWeekday);
+        var dates = ExpenseRecurrenceExpansion.WeekdayDatesInRange(start, end, targetWeekday);
 
         Assert.Equal(start, dates[0]);
         Assert.All(dates, d => Assert.Equal(targetWeekday, (int)d.DayOfWeek));

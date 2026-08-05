@@ -177,7 +177,7 @@ public class CyclesService
 
         // Idem pras despesas provisionadas semanais (terapia, diarista):
         // materializa a despesa provisionada do ciclo pra cada template Weekly ativo.
-        await ProvisionedExpenseExpansion.ExpandForCycleAsync(_db, cycle, ct);
+        await ExpenseRecurrenceExpansion.ExpandForCycleAsync(_db, cycle, ct);
 
         // Idem pras assinaturas mensais de cartão (Netflix, Spotify): materializa
         // a cobrança do ciclo pra cada CardEntryRecurrence ativo.
@@ -279,7 +279,7 @@ public class CyclesService
             _db.Cycles.Add(next);
 
             await IncomeSourceExpansion.ExpandForCycleAsync(_db, next, ct);
-            await ProvisionedExpenseExpansion.ExpandForCycleAsync(_db, next, ct);
+            await ExpenseRecurrenceExpansion.ExpandForCycleAsync(_db, next, ct);
             await CardEntryRecurrenceExpansion.ExpandForCycleAsync(_db, next, ct);
 
             previous = next;

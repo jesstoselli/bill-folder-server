@@ -20,7 +20,7 @@ namespace BillFolder.Application.UseCases.Recurrences;
 /// Idempotente por (UserId, TemplateId, DueDate). Só ADICIONA ao change tracker;
 /// SaveChangesAsync é do caller.
 /// </summary>
-public static class ProvisionedExpenseExpansion
+public static class ExpenseRecurrenceExpansion
 {
     public static async Task ExpandForTemplateAsync(
         IApplicationDbContext db,

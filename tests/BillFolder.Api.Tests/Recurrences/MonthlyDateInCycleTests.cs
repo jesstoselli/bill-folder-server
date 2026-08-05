@@ -13,7 +13,7 @@ public class MonthlyDateInCycleTests
     [Fact]
     public void Returns_the_day_within_a_full_calendar_month()
     {
-        var result = CardEntryRecurrenceExpansion.MonthlyDateInRange(
+        var result = RecurrenceDates.MonthlyDateInRange(
             new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31), 15);
 
         Assert.Equal(new DateOnly(2026, 7, 15), result);
@@ -22,7 +22,7 @@ public class MonthlyDateInCycleTests
     [Fact]
     public void Clamps_day_to_last_day_of_a_short_month()
     {
-        var result = CardEntryRecurrenceExpansion.MonthlyDateInRange(
+        var result = RecurrenceDates.MonthlyDateInRange(
             new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 28), 31);
 
         Assert.Equal(new DateOnly(2026, 2, 28), result);
@@ -31,7 +31,7 @@ public class MonthlyDateInCycleTests
     [Fact]
     public void Returns_null_when_day_is_outside_a_partial_range()
     {
-        var result = CardEntryRecurrenceExpansion.MonthlyDateInRange(
+        var result = RecurrenceDates.MonthlyDateInRange(
             new DateOnly(2026, 7, 20), new DateOnly(2026, 7, 31), 5);
 
         Assert.Null(result);

@@ -8,7 +8,7 @@ namespace BillFolder.Application.UseCases.Recurrences;
 /// <summary>
 /// Materializa CardEntryRecurrences (assinaturas mensais fixas — Netflix,
 /// Spotify) em UMA compra à vista (installmentsCount = 1) por ciclo, colocada
-/// na fatura certa via CardCycleCalculator. Espelha o ProvisionedExpenseExpansion,
+/// na fatura certa via CardCycleCalculator. Espelha o ExpenseRecurrenceExpansion,
 /// com a diferença de que a cobrança é MENSAL num dia fixo do mês (DayOfMonth),
 /// não semanal.
 ///
@@ -81,7 +81,7 @@ public static class CardEntryRecurrenceExpansion
             return;
         }
 
-        var purchaseDate = MonthlyDateInRange(effectiveStart, effectiveEnd, recurrence.DayOfMonth);
+        var purchaseDate = RecurrenceDates.MonthlyDateInRange(effectiveStart, effectiveEnd, recurrence.DayOfMonth);
         if (purchaseDate is not { } date)
         {
             return; // a cobrança mensal não cai nesse range
@@ -119,46 +119,5 @@ public static class CardEntryRecurrenceExpansion
             templateId: recurrence.Id,
             notes: null,
             ct);
-    }
-
-    /// <summary>
-    /// A data em [start, end] correspondente ao <paramref name="dayOfMonth"/>,
-    /// clampado ao último dia do mês (ex: dia 31 em fevereiro vira 28/29).
-    /// Como os ciclos do BillFolder são ~mensais mas podem cruzar a fronteira
-    /// do mês (ex: 18/jun–17/jul), tenta o mês do <paramref name="start"/> e,
-    /// se não cair no range, o mês do <paramref name="end"/>. Retorna null se
-    /// o dia não cai em nenhum dos dois.
-    /// </summary>
-    internal static DateOnly? MonthlyDateInRange(DateOnly start, DateOnly end, int dayOfMonth)
-    {
-        if (start > end)
-        {
-            return null;
-        }
-
-        var candidate = ClampedDate(start.Year, start.Month, dayOfMonth);
-        if (candidate >= start && candidate <= end)
-        {
-            return candidate;
-        }
-
-        // Range cruza fronteira de mês — tenta o mês do end.
-        if (end.Year != start.Year || end.Month != start.Month)
-        {
-            candidate = ClampedDate(end.Year, end.Month, dayOfMonth);
-            if (candidate >= start && candidate <= end)
-            {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
-    private static DateOnly ClampedDate(int year, int month, int dayOfMonth)
-    {
-        var maxDay = DateTime.DaysInMonth(year, month);
-        var day = Math.Min(dayOfMonth, maxDay);
-        return new DateOnly(year, month, day);
     }
 }
