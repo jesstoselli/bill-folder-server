@@ -524,6 +524,7 @@ public class ExpensesService
             e.CategoryId,
             e.Category.NamePt,
             e.LinkedCardStatementId,
+            e.TemplateId,
             e.Notes,
             e.OccurrenceAmount,
             e.OccurrencesTotal,

@@ -15,6 +15,7 @@ public sealed record ExpenseResponse(
     Guid CategoryId,
     string CategoryName,
     Guid? LinkedCardStatementId,
+    Guid? TemplateId,
     string? Notes,
     // Provisionamento (null/0 em despesas normais):
     decimal? OccurrenceAmount,
