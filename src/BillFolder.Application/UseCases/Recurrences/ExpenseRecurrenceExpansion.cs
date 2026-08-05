@@ -28,12 +28,13 @@ public static class ExpenseRecurrenceExpansion
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(recurrence);
-        if (!recurrence.IsActive || recurrence.Frequency != ExpenseRecurrenceFrequency.Weekly)
+        if (!recurrence.IsActive)
         {
             return;
         }
 
-        var end = recurrence.EndDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date).AddYears(5);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var end = recurrence.EndDate ?? today.AddYears(5);
 
         var cycles = await db.Cycles
             .Where(c => c.UserId == recurrence.UserId
@@ -41,9 +42,11 @@ public static class ExpenseRecurrenceExpansion
                      && c.StartDate <= end)
             .ToListAsync(ct);
 
+        // notBefore = hoje: na criação, Monthly não gera ocorrência já vencida
+        // (não-retroativa). Weekly ignora notBefore.
         foreach (var cycle in cycles)
         {
-            await MaterializeAsync(db, recurrence, cycle, ct);
+            await MaterializeAsync(db, recurrence, cycle, today, ct);
         }
     }
 
@@ -57,34 +60,59 @@ public static class ExpenseRecurrenceExpansion
         var recurrences = await db.ExpenseRecurrences
             .Where(r => r.UserId == cycle.UserId
                      && r.IsActive
-                     && r.Frequency == ExpenseRecurrenceFrequency.Weekly
                      && r.StartDate <= cycle.EndDate
                      && (r.EndDate == null || r.EndDate >= cycle.StartDate))
             .ToListAsync(ct);
 
+        // Rollover: notBefore null → gera o ciclo novo mesmo se já venceu (a
+        // recorrência é anterior ao ciclo, não é retroativo).
         foreach (var recurrence in recurrences)
         {
-            await MaterializeAsync(db, recurrence, cycle, ct);
+            await MaterializeAsync(db, recurrence, cycle, notBefore: null, ct);
         }
     }
+
+    /// <summary>Monthly não-retroativa: null sempre gera; caso contrário só se
+    /// o vencimento não passou (dueDate &gt;= notBefore). Puro/determinístico.</summary>
+    internal static bool ShouldMaterializeMonthly(DateOnly dueDate, DateOnly? notBefore)
+        => notBefore is null || dueDate >= notBefore;
 
     private static async Task MaterializeAsync(
         IApplicationDbContext db,
         ExpenseRecurrence recurrence,
         Cycle cycle,
+        DateOnly? notBefore,
         CancellationToken ct)
     {
-        // Weekly sem weekday é dado inválido — ignora defensivamente.
-        if (recurrence.Weekday is not { } weekday)
-        {
-            return;
-        }
-
         var effectiveStart = cycle.StartDate > recurrence.StartDate ? cycle.StartDate : recurrence.StartDate;
         var effectiveEnd = recurrence.EndDate.HasValue && recurrence.EndDate.Value < cycle.EndDate
             ? recurrence.EndDate.Value
             : cycle.EndDate;
         if (effectiveStart > effectiveEnd)
+        {
+            return;
+        }
+
+        if (recurrence.Frequency == ExpenseRecurrenceFrequency.Monthly)
+        {
+            await MaterializeMonthlyAsync(db, recurrence, effectiveStart, effectiveEnd, notBefore, ct);
+        }
+        else
+        {
+            await MaterializeWeeklyAsync(db, recurrence, effectiveStart, effectiveEnd, ct);
+        }
+    }
+
+    // Weekly → despesa provisionada (reserva o mês, baixa por ocorrência).
+    private static async Task MaterializeWeeklyAsync(
+        IApplicationDbContext db,
+        ExpenseRecurrence recurrence,
+        DateOnly effectiveStart,
+        DateOnly effectiveEnd,
+        CancellationToken ct)
+    {
+        // Weekly sem weekday é dado inválido — ignora defensivamente.
+        if (recurrence.Weekday is not { } weekday)
         {
             return;
         }
@@ -96,15 +124,7 @@ public static class ExpenseRecurrenceExpansion
         }
 
         var dueDate = dates[0];
-
-        // Idempotência: uma despesa provisionada por (user, template, dueDate).
-        var exists = await db.Expenses
-            .AnyAsync(
-                e => e.UserId == recurrence.UserId
-                  && e.TemplateId == recurrence.Id
-                  && e.DueDate == dueDate,
-                ct);
-        if (exists)
+        if (await ExistsAsync(db, recurrence, dueDate, ct))
         {
             return;
         }
@@ -125,6 +145,50 @@ public static class ExpenseRecurrenceExpansion
             PaidToDate = 0m,
         });
     }
+
+    // Monthly → despesa comum, 1 por ciclo, no DueDay (não-retroativa na criação).
+    private static async Task MaterializeMonthlyAsync(
+        IApplicationDbContext db,
+        ExpenseRecurrence recurrence,
+        DateOnly effectiveStart,
+        DateOnly effectiveEnd,
+        DateOnly? notBefore,
+        CancellationToken ct)
+    {
+        if (RecurrenceDates.MonthlyDateInRange(effectiveStart, effectiveEnd, recurrence.DueDay ?? 1) is not { } dueDate)
+        {
+            return; // o dia do mês não cai nesse ciclo
+        }
+
+        if (!ShouldMaterializeMonthly(dueDate, notBefore))
+        {
+            return;
+        }
+
+        if (await ExistsAsync(db, recurrence, dueDate, ct))
+        {
+            return;
+        }
+
+        db.Expenses.Add(new Expense
+        {
+            Id = Guid.CreateVersion7(),
+            UserId = recurrence.UserId,
+            TemplateId = recurrence.Id,
+            DueDate = dueDate,
+            Label = recurrence.DefaultLabel,
+            ExpectedAmount = recurrence.DefaultAmount,
+            CategoryId = recurrence.DefaultCategoryId,
+            Status = ExpenseStatus.Pending,
+        });
+    }
+
+    // Idempotência: uma despesa por (user, template, dueDate).
+    private static Task<bool> ExistsAsync(
+        IApplicationDbContext db, ExpenseRecurrence recurrence, DateOnly dueDate, CancellationToken ct)
+        => db.Expenses.AnyAsync(
+            e => e.UserId == recurrence.UserId && e.TemplateId == recurrence.Id && e.DueDate == dueDate,
+            ct);
 
     /// <summary>
     /// Todas as datas em [start, end] cujo dia-da-semana é <paramref name="weekday"/>
