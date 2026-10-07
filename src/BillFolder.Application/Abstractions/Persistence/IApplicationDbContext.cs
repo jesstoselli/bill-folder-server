@@ -31,5 +31,13 @@ public interface IApplicationDbContext
     DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<PasswordResetRequest> PasswordResetRequests { get; }
 
+    Task<IApplicationDbTransaction> BeginTransactionAsync(
+        CancellationToken cancellationToken = default);
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IApplicationDbTransaction : IAsyncDisposable
+{
+    Task CommitAsync(CancellationToken cancellationToken = default);
 }

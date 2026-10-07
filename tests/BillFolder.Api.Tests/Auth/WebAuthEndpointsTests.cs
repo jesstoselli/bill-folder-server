@@ -4,6 +4,7 @@ using System.Text.Json;
 using BillFolder.Api.Tests.Infrastructure;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BillFolder.Api.Tests.Auth;
 
@@ -13,9 +14,11 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
     private const string AllowedOrigin = "https://app.billfolder.app";
 
     private readonly HttpClient _client;
+    private readonly ApiWebApplicationFactory _factory;
 
     public WebAuthEndpointsTests(ApiWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
@@ -74,6 +77,35 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
         var replay = await RefreshWebAsync(oldCookie);
         replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         await AssertErrorAsync(replay, "invalid_refresh_token");
+    }
+
+    [Fact]
+    public async Task WebRefresh_ConcurrentReplay_AllowsExactlyOneRotation()
+    {
+        var login = await LoginWebAsync();
+        var oldCookie = RefreshCookieFrom(login);
+        var barrier = _factory.Services.GetRequiredService<RefreshTokenLookupBarrier>();
+        barrier.Enable(participants: 2);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var attempts = new[]
+        {
+            RefreshWebAsync(oldCookie, timeout.Token),
+            RefreshWebAsync(oldCookie, timeout.Token),
+        };
+
+        var responses = await Task.WhenAll(attempts);
+
+        responses.Count(response => response.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        responses.Count(response => response.StatusCode == HttpStatusCode.Unauthorized).Should().Be(1);
+
+        var winnerCookie = RefreshCookieFrom(responses.Single(
+            response => response.StatusCode == HttpStatusCode.OK));
+        var winnerSuccessor = await RefreshWebAsync(winnerCookie, timeout.Token);
+        winnerSuccessor.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var oldTokenReplay = await RefreshWebAsync(oldCookie, timeout.Token);
+        oldTokenReplay.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -160,15 +192,18 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
         response.Headers.GetValues("Access-Control-Allow-Credentials").Single().Should().Be("true");
     }
 
-    [Fact]
-    public async Task Cors_DoesNotAllowUnknownOrigin()
+    [Theory]
+    [InlineData("https://evil.example")]
+    [InlineData("null")]
+    public async Task Cors_RejectsUnknownPreflightOriginWithForbidden(string origin)
     {
         using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/auth/web/refresh");
-        request.Headers.Add("Origin", "https://evil.example");
+        request.Headers.Add("Origin", origin);
         request.Headers.Add("Access-Control-Request-Method", "POST");
 
         var response = await _client.SendAsync(request);
 
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
     }
 
@@ -211,11 +246,13 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
         return await _client.PostAsJsonAsync("/v1/auth/web/login", credentials);
     }
 
-    private async Task<HttpResponseMessage> RefreshWebAsync(string cookie)
+    private async Task<HttpResponseMessage> RefreshWebAsync(
+        string cookie,
+        CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/auth/web/refresh");
         request.Headers.Add("Cookie", cookie);
-        return await _client.SendAsync(request);
+        return await _client.SendAsync(request, cancellationToken);
     }
 
     private static string RefreshCookieFrom(HttpResponseMessage response)

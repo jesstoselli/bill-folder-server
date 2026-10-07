@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Testcontainers.PostgreSql;
 
 namespace BillFolder.Api.Tests.Infrastructure;
@@ -20,18 +22,21 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>, I
         "db",
         "schema.sql")));
 
-    private static readonly IReadOnlyDictionary<string, string> TestConfiguration =
-        new Dictionary<string, string>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, string?> TestConfiguration =
+        new Dictionary<string, string?>(StringComparer.Ordinal)
         {
-            ["ConnectionStrings__Postgres"] = string.Empty,
-            ["Jwt__Issuer"] = "billfolder-tests",
-            ["Jwt__Audience"] = "billfolder-tests",
-            ["Jwt__Key"] = "integration-tests-only-key-with-at-least-32-characters",
-            ["Jwt__AccessTokenMinutes"] = "30",
-            ["Jwt__RefreshTokenDays"] = "14",
-            ["WebAuth__CookieName"] = "bf_refresh",
-            ["WebAuth__AllowedOrigins__0"] = "https://app.billfolder.app",
+            ["Jwt:Issuer"] = "billfolder-tests",
+            ["Jwt:Audience"] = "billfolder-tests",
+            ["Jwt:Key"] = "integration-tests-only-key-with-at-least-32-characters",
+            ["Jwt:AccessTokenMinutes"] = "30",
+            ["Jwt:RefreshTokenDays"] = "14",
+            ["WebAuth:CookieName"] = "bf_refresh",
+            ["WebAuth:AllowedOrigins:0"] = "https://app.billfolder.app",
+            ["BillFolderTests:FactoryConfigurationMustRemainProcessLocal_9D744F"] = "enabled",
         };
+
+    private readonly string _environment;
+    private readonly IReadOnlyDictionary<string, string?> _configurationOverrides;
 
     private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:16-alpine")
         .WithResourceMapping(
@@ -39,36 +44,71 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>, I
             new FileInfo("/docker-entrypoint-initdb.d/001-schema.sql"))
         .WithAutoRemove(true)
         .WithCleanUp(false)
+        .WithLabel("com.billfolder.test-suite", "api-integration")
         .Build();
 
-    private readonly Dictionary<string, string?> _originalEnvironment = new(StringComparer.Ordinal);
+    public ApiWebApplicationFactory()
+        : this("Production", new Dictionary<string, string?>(StringComparer.Ordinal))
+    {
+    }
+
+    private ApiWebApplicationFactory(
+        string environment,
+        IReadOnlyDictionary<string, string?> configurationOverrides)
+    {
+        _environment = environment;
+        _configurationOverrides = configurationOverrides;
+    }
+
+    public static ApiWebApplicationFactory Create(
+        string environment,
+        IReadOnlyDictionary<string, string?> configurationOverrides)
+    {
+        return new ApiWebApplicationFactory(environment, configurationOverrides);
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Production");
         builder.ConfigureServices(services =>
         {
-            services.AddDbContext<ApplicationDbContext>(options =>
+            services.AddSingleton<RefreshTokenLookupBarrier>();
+            services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+            {
+                options.AddInterceptors(serviceProvider.GetRequiredService<RefreshTokenLookupBarrier>());
                 options.ConfigureWarnings(warnings =>
-                    warnings.Ignore(RelationalEventId.PendingModelChangesWarning)));
+                    warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+            });
         });
     }
 
-    async Task IAsyncLifetime.InitializeAsync()
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        builder.UseEnvironment(_environment);
+        builder.ConfigureAppConfiguration((_, configuration) =>
+        {
+            var settings = new Dictionary<string, string?>(TestConfiguration, StringComparer.Ordinal)
+            {
+                ["ConnectionStrings:Postgres"] = _database.GetConnectionString(),
+            };
+
+            foreach (var item in _configurationOverrides)
+            {
+                settings[item.Key] = item.Value;
+            }
+
+            configuration.AddInMemoryCollection(settings);
+        });
+
+        return base.CreateHost(builder);
+    }
+
+    public async Task InitializeAsync()
     {
         await _database.StartAsync();
 
-        foreach (var item in TestConfiguration)
-        {
-            _originalEnvironment[item.Key] = Environment.GetEnvironmentVariable(item.Key);
-            var value = item.Key == "ConnectionStrings__Postgres"
-                ? _database.GetConnectionString()
-                : item.Value;
-            Environment.SetEnvironmentVariable(item.Key, value);
-        }
-
         await using var scope = Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        ModelSnapshotDriftGuard.EnsureOnlyAcceptedBaseline(db);
         await db.Database.MigrateAsync();
     }
 
@@ -77,14 +117,10 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>, I
         try
         {
             await base.DisposeAsync();
-            await _database.DisposeAsync();
         }
         finally
         {
-            foreach (var item in _originalEnvironment)
-            {
-                Environment.SetEnvironmentVariable(item.Key, item.Value);
-            }
+            await _database.DisposeAsync();
         }
     }
 }

@@ -2,6 +2,7 @@ using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Domain.Entities;
 using BillFolder.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace BillFolder.Infrastructure.Persistence;
 
@@ -31,6 +32,13 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<PasswordResetRequest> PasswordResetRequests => Set<PasswordResetRequest>();
 
+    public async Task<IApplicationDbTransaction> BeginTransactionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var transaction = await Database.BeginTransactionAsync(cancellationToken);
+        return new ApplicationDbTransaction(transaction);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Carrega todas as IEntityTypeConfiguration<> do assembly
@@ -49,5 +57,19 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         modelBuilder.HasPostgresEnum<SavingsTransactionType>("public", "savings_transaction_type");
         modelBuilder.HasPostgresEnum<CycleAdjustmentType>("public", "cycle_adjustment_type");
         modelBuilder.HasPostgresEnum<ExpenseRecurrenceFrequency>("public", "expense_recurrence_frequency");
+    }
+
+    private sealed class ApplicationDbTransaction(IDbContextTransaction transaction)
+        : IApplicationDbTransaction
+    {
+        public Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            return transaction.CommitAsync(cancellationToken);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return transaction.DisposeAsync();
+        }
     }
 }

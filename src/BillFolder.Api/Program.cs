@@ -1,11 +1,14 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using BillFolder.Api.Auth;
 using BillFolder.Api.Endpoints;
 using BillFolder.Infrastructure;
 using BillFolder.Infrastructure.Auth;
 using BillFolder.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,14 +16,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var webAuthSection = builder.Configuration.GetSection(WebAuthOptions.SectionName);
-var webAuthOptions = webAuthSection.Get<WebAuthOptions>()
-    ?? throw new InvalidOperationException("WebAuth section is missing.");
-builder.Services.Configure<WebAuthOptions>(webAuthSection);
-builder.Services.AddCors(options => options.AddPolicy("BillFolderWeb", policy =>
-    policy.WithOrigins(webAuthOptions.AllowedOrigins)
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials()));
+builder.Services.AddSingleton<IValidateOptions<WebAuthOptions>, WebAuthOptionsValidator>();
+builder.Services.AddOptions<WebAuthOptions>()
+    .Bind(webAuthSection)
+    .ValidateOnStart();
+builder.Services.AddCors();
+builder.Services.AddOptions<CorsOptions>()
+    .Configure<IOptions<WebAuthOptions>>((options, configuredWebAuth) =>
+        options.AddPolicy("BillFolderWeb", policy =>
+            policy.WithOrigins(configuredWebAuth.Value.AllowedOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials()));
 
 // JSON: enums serializam como string camelCase ("pending", "paid", "overdue")
 // em vez de número (0/1/2). Configurável também na deserialização.
@@ -33,14 +40,14 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 // ============================================================================
 // JWT Bearer authentication
 // ============================================================================
-var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
-var jwtOpts = jwtSection.Get<JwtOptions>()
-    ?? throw new InvalidOperationException("Jwt section is missing.");
-
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer();
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((options, configuredJwt) =>
     {
+        var jwtOpts = configuredJwt.Value;
+
         // Desliga o mapping legado de WS-Federation (sub → NameIdentifier).
         // Mantém os nomes RFC 7519 originais (sub, email, jti, etc).
         options.MapInboundClaims = false;
@@ -64,6 +71,21 @@ var app = builder.Build();
 // TLS termination é feita pelo nginx em produção (e pelo Kestrel em dev).
 // API em si só escuta HTTP — não precisa de UseHttpsRedirection.
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments(
+            "/v1/auth/web",
+            StringComparison.Ordinal)
+        && !WebOriginPolicy.IsAllowed(
+            context.Request,
+            context.RequestServices.GetRequiredService<IOptions<WebAuthOptions>>().Value))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
+    await next();
+});
 app.UseCors("BillFolderWeb");
 app.UseAuthentication();
 app.UseAuthorization();

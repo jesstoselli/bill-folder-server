@@ -11,16 +11,7 @@ public sealed class WebOriginFilter(IOptions<WebAuthOptions> options) : IEndpoin
         EndpointFilterInvocationContext context,
         EndpointFilterDelegate next)
     {
-        var headers = context.HttpContext.Request.Headers;
-        if (!headers.TryGetValue("Origin", out var origin))
-        {
-            return await next(context);
-        }
-
-        var isAllowed = origin.Count == 1
-            && _options.AllowedOrigins.Contains(origin[0], StringComparer.Ordinal);
-
-        return isAllowed
+        return WebOriginPolicy.IsAllowed(context.HttpContext.Request, _options)
             ? await next(context)
             : Results.StatusCode(StatusCodes.Status403Forbidden);
     }

@@ -40,22 +40,25 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(configuration);
 
         // ---- Postgres + EF Core ----
-        var connectionString = configuration.GetConnectionString("Postgres")
-            ?? throw new InvalidOperationException("ConnectionStrings:Postgres não configurada.");
+        services.AddSingleton(serviceProvider =>
+        {
+            var currentConfiguration = serviceProvider.GetRequiredService<IConfiguration>();
+            var connectionString = currentConfiguration.GetConnectionString("Postgres")
+                ?? throw new InvalidOperationException(
+                    "ConnectionStrings:Postgres não configurada.");
 
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-        dataSourceBuilder.MapEnum<IncomeOriginType>("income_origin_type");
-        dataSourceBuilder.MapEnum<IncomeStatus>("income_status");
-        dataSourceBuilder.MapEnum<ExpenseStatus>("expense_status");
-        dataSourceBuilder.MapEnum<CardStatementStatus>("card_statement_status");
-        dataSourceBuilder.MapEnum<SavingsTransactionType>("savings_transaction_type");
-        dataSourceBuilder.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
-        dataSourceBuilder.MapEnum<ExpenseRecurrenceFrequency>("expense_recurrence_frequency");
-        var dataSource = dataSourceBuilder.Build();
-
-        services.AddSingleton(dataSource);
-        services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(dataSource, npgsql =>
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+            dataSourceBuilder.MapEnum<IncomeOriginType>("income_origin_type");
+            dataSourceBuilder.MapEnum<IncomeStatus>("income_status");
+            dataSourceBuilder.MapEnum<ExpenseStatus>("expense_status");
+            dataSourceBuilder.MapEnum<CardStatementStatus>("card_statement_status");
+            dataSourceBuilder.MapEnum<SavingsTransactionType>("savings_transaction_type");
+            dataSourceBuilder.MapEnum<CycleAdjustmentType>("cycle_adjustment_type");
+            dataSourceBuilder.MapEnum<ExpenseRecurrenceFrequency>("expense_recurrence_frequency");
+            return dataSourceBuilder.Build();
+        });
+        services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+            options.UseNpgsql(serviceProvider.GetRequiredService<NpgsqlDataSource>(), npgsql =>
             {
                 // Os enums precisam ser registrados TAMBÉM no nível do EF Core provider,
                 // não só no DataSource. Sem isso, EF Core gera SQL passando inteiro pro

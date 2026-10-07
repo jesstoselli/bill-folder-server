@@ -160,28 +160,44 @@ public class AuthService
         var tokenHash = _jwt.ComputeTokenHash(request.RefreshToken);
         var now = DateTime.UtcNow;
 
-        var existing = await _db.RefreshTokens
-            .Include(rt => rt.User)
-            .FirstOrDefaultAsync(
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+
+        var user = await _db.RefreshTokens
+            .AsNoTracking()
+            .Where(
                 rt => rt.TokenHash == tokenHash
                     && rt.RevokedAt == null
-                    && rt.ExpiresAt > now,
-                ct);
+                    && rt.ExpiresAt > now)
+            .Select(rt => rt.User)
+            .SingleOrDefaultAsync(ct);
 
-        if (existing is null)
+        if (user is null)
         {
             return OperationResult.Fail<AuthResponse>(
                 "invalid_refresh_token",
                 "Refresh token inválido, revogado ou expirado.");
         }
 
-        // ROTAÇÃO: revoga o refresh atual antes de gerar o novo par.
-        // Se um atacante tem cópia desse refresh, vai falhar no próximo refresh dele.
-        existing.RevokedAt = now;
+        var revokedTokens = await _db.RefreshTokens
+            .Where(
+                rt => rt.TokenHash == tokenHash
+                    && rt.RevokedAt == null
+                    && rt.ExpiresAt > now)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(rt => rt.RevokedAt, now),
+                ct);
 
-        var response = await GenerateAndPersistTokensAsync(existing.User, ct);
+        if (revokedTokens != 1)
+        {
+            return OperationResult.Fail<AuthResponse>(
+                "invalid_refresh_token",
+                "Refresh token inválido, revogado ou expirado.");
+        }
+
+        var response = await GenerateAndPersistTokensAsync(user, ct);
 
         await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         return OperationResult.Ok(response);
     }
