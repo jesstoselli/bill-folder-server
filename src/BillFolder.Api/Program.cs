@@ -75,7 +75,7 @@ app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments(
             "/v1/auth/web",
-            StringComparison.Ordinal)
+            StringComparison.OrdinalIgnoreCase)
         && !WebOriginPolicy.IsAllowed(
             context.Request,
             context.RequestServices.GetRequiredService<IOptions<WebAuthOptions>>().Value))

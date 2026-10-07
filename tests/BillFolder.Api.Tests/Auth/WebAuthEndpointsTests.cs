@@ -208,6 +208,47 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
+    public async Task Cors_RejectsUnknownPreflightOriginForCaseInsensitiveRouteAlias()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/V1/AUTH/WEB/refresh");
+        request.Headers.Add("Origin", "https://evil.example");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Cors_RejectsPreflightWithMultipleOriginValues()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/auth/web/refresh");
+        request.Headers.TryAddWithoutValidation(
+            "Origin",
+            ["https://app.billfolder.app", "https://evil.example"]);
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Cors_DoesNotApplyWebAuthGuardOutsideSegmentBoundary()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/auth/webfoo");
+        request.Headers.Add("Origin", "https://evil.example");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Cors_AllowsConfiguredOriginWithCredentials()
     {
         using var request = new HttpRequestMessage(HttpMethod.Options, "/v1/auth/web/refresh");
