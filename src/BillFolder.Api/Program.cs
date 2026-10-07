@@ -12,6 +12,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
+var webAuthSection = builder.Configuration.GetSection(WebAuthOptions.SectionName);
+var webAuthOptions = webAuthSection.Get<WebAuthOptions>()
+    ?? throw new InvalidOperationException("WebAuth section is missing.");
+builder.Services.Configure<WebAuthOptions>(webAuthSection);
+builder.Services.AddCors(options => options.AddPolicy("BillFolderWeb", policy =>
+    policy.WithOrigins(webAuthOptions.AllowedOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()));
+
 // JSON: enums serializam como string camelCase ("pending", "paid", "overdue")
 // em vez de número (0/1/2). Configurável também na deserialização.
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -54,6 +64,7 @@ var app = builder.Build();
 // TLS termination é feita pelo nginx em produção (e pelo Kestrel em dev).
 // API em si só escuta HTTP — não precisa de UseHttpsRedirection.
 
+app.UseCors("BillFolderWeb");
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -73,6 +84,7 @@ app.MapGet("/v1/health", async (ApplicationDbContext db, CancellationToken ct) =
 });
 
 app.MapAuthEndpoints();
+app.MapWebAuthEndpoints();
 app.MapUsersEndpoints();
 app.MapCategoriesEndpoints();
 app.MapCardEntriesEndpoints();
@@ -93,3 +105,5 @@ app.MapSavingsAccountsEndpoints();
 app.MapSavingsTransactionsEndpoints();
 
 app.Run();
+
+public partial class Program;

@@ -22,6 +22,11 @@ public sealed record AuthResponse(
     DateTime RefreshTokenExpiresAt,
     UserDto User);
 
+public sealed record WebAuthResponse(
+    string AccessToken,
+    DateTime AccessTokenExpiresAt,
+    UserDto User);
+
 public sealed record UserDto(
     Guid Id,
     string Email,
