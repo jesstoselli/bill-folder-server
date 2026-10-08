@@ -32,8 +32,9 @@ RUN dotnet publish src/BillFolder.Api \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 
-# Curl pro HEALTHCHECK funcionar
-RUN apk add --no-cache curl
+# Curl pro HEALTHCHECK funcionar; tzdata disponibiliza os fusos IANA usados
+# pelo relógio civil do negócio (por exemplo, America/Sao_Paulo).
+RUN apk add --no-cache curl tzdata
 
 # As imagens base do .NET 8+ já incluem um user 'app' não-root.
 # Apenas mudamos pra ele aqui.
