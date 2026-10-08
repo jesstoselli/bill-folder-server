@@ -12,6 +12,7 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(x => x.UserId).HasColumnName("user_id");
+        builder.Property(x => x.FamilyId).HasColumnName("family_id");
         builder.Property(x => x.TokenHash).HasColumnName("token_hash").IsRequired();
         builder.Property(x => x.ExpiresAt).HasColumnName("expires_at");
         builder.Property(x => x.RevokedAt).HasColumnName("revoked_at");
@@ -24,6 +25,7 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
 
         // Index pra lookup rápido por user
         builder.HasIndex(x => x.UserId).HasDatabaseName("ix_refresh_tokens_user_id");
+        builder.HasIndex(x => x.FamilyId).HasDatabaseName("ix_refresh_tokens_family_id");
 
         // Index único no hash — refresh tokens são únicos no sistema
         builder.HasIndex(x => x.TokenHash).IsUnique().HasDatabaseName("ix_refresh_tokens_token_hash");

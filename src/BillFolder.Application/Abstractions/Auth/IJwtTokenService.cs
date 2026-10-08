@@ -1,5 +1,7 @@
 namespace BillFolder.Application.Abstractions.Auth;
 
+public readonly record struct AccessTokenResult(string Token, DateTime ExpiresAt);
+
 public interface IJwtTokenService
 {
     /// <summary>
@@ -7,7 +9,7 @@ public interface IJwtTokenService
     /// Claims: sub (userId), email, jti, iat, nbf, exp.
     /// Validade controlada pelo JwtOptions:AccessTokenMinutes.
     /// </summary>
-    string GenerateAccessToken(Guid userId, string email);
+    AccessTokenResult GenerateAccessToken(Guid userId, string email);
 
     /// <summary>
     /// Gera um refresh token: tupla (token raw enviado ao cliente, hash SHA-256

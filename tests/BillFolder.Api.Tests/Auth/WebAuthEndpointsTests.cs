@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using BillFolder.Api.Tests.Infrastructure;
 using FluentAssertions;
@@ -12,6 +13,7 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
 {
     private const string Password = "correct-horse-battery-staple";
     private const string AllowedOrigin = "https://app.billfolder.app";
+    private const string PreviewOrigin = "https://preview.billfolder.app";
 
     private readonly HttpClient _client;
     private readonly ApiWebApplicationFactory _factory;
@@ -106,6 +108,24 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
 
         var oldTokenReplay = await RefreshWebAsync(oldCookie, timeout.Token);
         oldTokenReplay.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task WebLogout_WithRotatedPredecessor_RevokesActiveFamilySuccessor()
+    {
+        var login = await LoginWebAsync();
+        var predecessorCookie = RefreshCookieFrom(login);
+        var rotation = await RefreshWebAsync(predecessorCookie);
+        var successorCookie = RefreshCookieFrom(rotation);
+
+        using var logoutRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/auth/web/logout");
+        logoutRequest.Headers.Add("Cookie", predecessorCookie);
+        var logout = await _client.SendAsync(logoutRequest);
+
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var refresh = await RefreshWebAsync(successorCookie);
+        refresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorAsync(refresh, "invalid_refresh_token");
     }
 
     [Fact]
@@ -260,6 +280,58 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         response.Headers.GetValues("Access-Control-Allow-Origin").Single().Should().Be(AllowedOrigin);
         response.Headers.GetValues("Access-Control-Allow-Credentials").Single().Should().Be("true");
+    }
+
+    [Fact]
+    public async Task Cors_AllowsOnlyTheExactAuthenticatedPreviewOrigin()
+    {
+        using var allowed = new HttpRequestMessage(HttpMethod.Options, "/v1/auth/web/refresh");
+        allowed.Headers.Add("Origin", PreviewOrigin);
+        allowed.Headers.Add("Access-Control-Request-Method", "POST");
+
+        var allowedResponse = await _client.SendAsync(allowed);
+
+        allowedResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        allowedResponse.Headers.GetValues("Access-Control-Allow-Origin").Single()
+            .Should().Be(PreviewOrigin);
+
+        using var rejected = new HttpRequestMessage(HttpMethod.Options, "/v1/auth/web/refresh");
+        rejected.Headers.Add("Origin", "https://branch.billfolder.pages.dev");
+        rejected.Headers.Add("Access-Control-Request-Method", "POST");
+
+        var rejectedResponse = await _client.SendAsync(rejected);
+
+        rejectedResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        rejectedResponse.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AuthResponse_UsesConfiguredAccessTokenExpiration()
+    {
+        await using var factory = ApiWebApplicationFactory.Create(
+            "Production",
+            new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["Jwt:AccessTokenMinutes"] = "7",
+            });
+        await factory.InitializeAsync();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = false,
+        });
+
+        var response = await client.PostAsJsonAsync(
+            "/v1/auth/signup",
+            new { email = UniqueEmail(), password = Password, displayName = "Expiry User" });
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var accessToken = json.GetProperty("accessToken").GetString();
+        var responseExpiry = json.GetProperty("accessTokenExpiresAt").GetDateTime();
+        var jwtExpiry = new JwtSecurityTokenHandler().ReadJwtToken(accessToken).ValidTo;
+
+        responseExpiry.Should().Be(jwtExpiry);
     }
 
     [Fact]

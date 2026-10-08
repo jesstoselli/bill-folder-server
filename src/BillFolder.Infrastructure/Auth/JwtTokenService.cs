@@ -30,7 +30,7 @@ public class JwtTokenService : IJwtTokenService
         _signingCredentials = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256);
     }
 
-    public string GenerateAccessToken(Guid userId, string email)
+    public AccessTokenResult GenerateAccessToken(Guid userId, string email)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
@@ -46,15 +46,19 @@ public class JwtTokenService : IJwtTokenService
                 ClaimValueTypes.Integer64),
         };
 
+        var unroundedExpiry = now.AddMinutes(_options.AccessTokenMinutes);
+        var expiresAt = new DateTime(
+            unroundedExpiry.Ticks - (unroundedExpiry.Ticks % TimeSpan.TicksPerSecond),
+            DateTimeKind.Utc);
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
             notBefore: now,
-            expires: now.AddMinutes(_options.AccessTokenMinutes),
+            expires: expiresAt,
             signingCredentials: _signingCredentials);
 
-        return _tokenHandler.WriteToken(token);
+        return new AccessTokenResult(_tokenHandler.WriteToken(token), expiresAt);
     }
 
     public (string Token, string Hash, DateTime ExpiresAt) GenerateRefreshToken()

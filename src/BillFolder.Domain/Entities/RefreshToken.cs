@@ -4,6 +4,7 @@ public class RefreshToken
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
+    public Guid FamilyId { get; set; }
 
     /// <summary>
     /// Hash SHA-256 do token opaco enviado ao cliente.

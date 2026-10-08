@@ -22,6 +22,17 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>, I
         "db",
         "schema.sql")));
 
+    private static readonly FileInfo RefreshFamilyMigration = new(Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "db",
+        "migrations",
+        "20261008120000_AddRefreshTokenFamilies.sql")));
+
     private static readonly IReadOnlyDictionary<string, string?> TestConfiguration =
         new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -110,6 +121,7 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>, I
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         ModelSnapshotDriftGuard.EnsureOnlyAcceptedBaseline(db);
         await db.Database.MigrateAsync();
+        await db.Database.ExecuteSqlRawAsync(await File.ReadAllTextAsync(RefreshFamilyMigration.FullName));
     }
 
     async Task IAsyncLifetime.DisposeAsync()

@@ -162,16 +162,16 @@ public class AuthService
 
         await using var transaction = await _db.BeginTransactionAsync(ct);
 
-        var user = await _db.RefreshTokens
+        var presentedToken = await _db.RefreshTokens
             .AsNoTracking()
             .Where(
                 rt => rt.TokenHash == tokenHash
                     && rt.RevokedAt == null
                     && rt.ExpiresAt > now)
-            .Select(rt => rt.User)
+            .Select(rt => new { rt.User, rt.FamilyId })
             .SingleOrDefaultAsync(ct);
 
-        if (user is null)
+        if (presentedToken is null)
         {
             return OperationResult.Fail<AuthResponse>(
                 "invalid_refresh_token",
@@ -194,7 +194,10 @@ public class AuthService
                 "Refresh token inválido, revogado ou expirado.");
         }
 
-        var response = await GenerateAndPersistTokensAsync(user, ct);
+        var response = await GenerateAndPersistTokensAsync(
+            presentedToken.User,
+            ct,
+            presentedToken.FamilyId);
 
         await _db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -219,17 +222,21 @@ public class AuthService
         var tokenHash = _jwt.ComputeTokenHash(request.RefreshToken);
         var now = DateTime.UtcNow;
 
-        // Idempotente: se o token não existe ou já foi revogado, retorna sucesso mesmo assim.
-        // Isso evita que um cliente fazendo retry receba 404 e fique confuso.
-        var existing = await _db.RefreshTokens
-            .FirstOrDefaultAsync(
-                rt => rt.TokenHash == tokenHash && rt.RevokedAt == null,
-                ct);
+        // Um predecessor rotacionado continua identificando a sessão. Isso permite
+        // que logout concorrente revogue também qualquer sucessor já emitido.
+        var familyId = await _db.RefreshTokens
+            .AsNoTracking()
+            .Where(rt => rt.TokenHash == tokenHash)
+            .Select(rt => (Guid?)rt.FamilyId)
+            .SingleOrDefaultAsync(ct);
 
-        if (existing is not null)
+        if (familyId.HasValue)
         {
-            existing.RevokedAt = now;
-            await _db.SaveChangesAsync(ct);
+            await _db.RefreshTokens
+                .Where(rt => rt.FamilyId == familyId.Value && rt.RevokedAt == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(rt => rt.RevokedAt, now),
+                    ct);
         }
 
         return OperationResult.Ok(true);
@@ -410,7 +417,10 @@ public class AuthService
         return Convert.ToBase64String(bytes);
     }
 
-    private async Task<AuthResponse> GenerateAndPersistTokensAsync(User user, CancellationToken ct)
+    private async Task<AuthResponse> GenerateAndPersistTokensAsync(
+        User user,
+        CancellationToken ct,
+        Guid? familyId = null)
     {
         var accessToken = _jwt.GenerateAccessToken(user.Id, user.Email);
         var (refreshToken, refreshHash, refreshExpiresAt) = _jwt.GenerateRefreshToken();
@@ -419,21 +429,18 @@ public class AuthService
         {
             Id = Guid.CreateVersion7(),
             UserId = user.Id,
+            FamilyId = familyId ?? Guid.CreateVersion7(),
             TokenHash = refreshHash,
             ExpiresAt = refreshExpiresAt,
         };
         _db.RefreshTokens.Add(refreshEntity);
 
-        // accessTokenExpiresAt = now + AccessTokenMinutes
-        // (poderia ler do JwtOptions, mas pra simplicidade calculamos baseado em padrão de 30min)
-        var accessExpiresAt = DateTime.UtcNow.AddMinutes(30);
-
         await Task.CompletedTask; // marker — na real esse método não tem await intermediário
 
         return new AuthResponse(
-            AccessToken: accessToken,
+            AccessToken: accessToken.Token,
             RefreshToken: refreshToken,
-            AccessTokenExpiresAt: accessExpiresAt,
+            AccessTokenExpiresAt: accessToken.ExpiresAt,
             RefreshTokenExpiresAt: refreshExpiresAt,
             User: new UserDto(user.Id, user.Email, user.DisplayName));
     }
