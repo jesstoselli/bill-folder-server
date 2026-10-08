@@ -8,6 +8,7 @@ public sealed record HomeResponse(
     HomeIncomeBreakdownDto IncomeBreakdown,
     HomeExpenseBreakdownDto ExpenseBreakdown,
     IReadOnlyList<HomeUpcomingExpenseDto> UpcomingExpenses,
+    IReadOnlyList<HomeUpcomingExpenseDto> OverdueExpenses,
     IReadOnlyList<HomeCardStatementDto> CardStatementsInCycle,
     IReadOnlyList<HomeCategoryBreakdownDto> CategoryBreakdown);
 

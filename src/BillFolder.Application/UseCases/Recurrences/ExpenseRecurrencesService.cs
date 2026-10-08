@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Recurrences;
 using BillFolder.Domain.Entities;
@@ -10,15 +11,18 @@ namespace BillFolder.Application.UseCases.Recurrences;
 public class ExpenseRecurrencesService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateExpenseRecurrenceRequest> _createValidator;
     private readonly IValidator<UpdateExpenseRecurrenceRequest> _updateValidator;
 
     public ExpenseRecurrencesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateExpenseRecurrenceRequest> createValidator,
         IValidator<UpdateExpenseRecurrenceRequest> updateValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
     }
@@ -99,7 +103,11 @@ public class ExpenseRecurrencesService
 
         // Template Weekly → materializa a despesa provisionada nos ciclos
         // existentes que ele cobre (espelha IncomeSourcesService). No-op pra Monthly.
-        await ExpenseRecurrenceExpansion.ExpandForTemplateAsync(_db, rec, ct);
+        await ExpenseRecurrenceExpansion.ExpandForTemplateAsync(
+            _db,
+            rec,
+            _businessDate.Today,
+            ct);
         await _db.SaveChangesAsync(ct);
 
         var created = await _db.ExpenseRecurrences

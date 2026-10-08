@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Incomes;
 using BillFolder.Domain.Entities;
@@ -10,15 +11,18 @@ namespace BillFolder.Application.UseCases.Incomes;
 public class IncomeSourcesService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateIncomeSourceRequest> _createValidator;
     private readonly IValidator<UpdateIncomeSourceRequest> _updateValidator;
 
     public IncomeSourcesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateIncomeSourceRequest> createValidator,
         IValidator<UpdateIncomeSourceRequest> updateValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
     }
@@ -87,7 +91,7 @@ public class IncomeSourcesService
         // recorrente não aparecia nos "recebimentos esperados no ciclo").
         // A expansão apenas adiciona ao change tracker; SaveChanges abaixo
         // commita source + entries na mesma transação.
-        await IncomeSourceExpansion.ExpandForSourceAsync(_db, source, ct);
+        await IncomeSourceExpansion.ExpandForSourceAsync(_db, source, _businessDate.Today, ct);
 
         await _db.SaveChangesAsync(ct);
 

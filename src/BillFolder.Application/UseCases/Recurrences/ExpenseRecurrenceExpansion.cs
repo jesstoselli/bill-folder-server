@@ -25,6 +25,7 @@ public static class ExpenseRecurrenceExpansion
     public static async Task ExpandForTemplateAsync(
         IApplicationDbContext db,
         ExpenseRecurrence recurrence,
+        DateOnly today,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(recurrence);
@@ -33,7 +34,6 @@ public static class ExpenseRecurrenceExpansion
             return;
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
         var end = recurrence.EndDate ?? today.AddYears(5);
 
         var cycles = await db.Cycles

@@ -1,6 +1,7 @@
 using BillFolder.Application.Abstractions.Auth;
 using BillFolder.Application.Abstractions.Email;
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Infrastructure.Email;
 using BillFolder.Application.UseCases.Accounts;
 using BillFolder.Application.UseCases.Auth;
@@ -18,6 +19,7 @@ using BillFolder.Application.Validators.Auth;
 using BillFolder.Domain.Enums;
 using BillFolder.Infrastructure.Auth;
 using BillFolder.Infrastructure.Persistence;
+using BillFolder.Infrastructure.Time;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -83,6 +85,16 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddScoped<AuthService>();
 
+        // ---- Business civil date ----
+        services.AddOptions<BusinessTimeOptions>()
+            .Bind(configuration.GetSection(BusinessTimeOptions.SectionName))
+            .Validate(
+                options => IsKnownTimeZone(options.TimeZoneId),
+                "BusinessTime:TimeZoneId must name an installed IANA/Windows time zone.")
+            .ValidateOnStart();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IBusinessDateProvider, BusinessDateProvider>();
+
         // ---- Email sender ----
         // Decide a impl em tempo de DI baseado em config:
         //   Resend:ApiKey preenchido → ResendEmailSender (chama API Resend)
@@ -126,5 +138,27 @@ public static class DependencyInjection
         services.AddValidatorsFromAssemblyContaining<SignupRequestValidator>();
 
         return services;
+    }
+
+    private static bool IsKnownTimeZone(string timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return false;
+        }
     }
 }

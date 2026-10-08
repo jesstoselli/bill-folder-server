@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Recurrences;
 using BillFolder.Domain.Entities;
@@ -10,15 +11,18 @@ namespace BillFolder.Application.UseCases.Recurrences;
 public class CardEntryRecurrencesService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateCardEntryRecurrenceRequest> _createValidator;
     private readonly IValidator<UpdateCardEntryRecurrenceRequest> _updateValidator;
 
     public CardEntryRecurrencesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateCardEntryRecurrenceRequest> createValidator,
         IValidator<UpdateCardEntryRecurrenceRequest> updateValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
     }
@@ -114,7 +118,11 @@ public class CardEntryRecurrencesService
 
         // Auto-gera a cobrança nos ciclos existentes que o template cobre
         // (espelha ExpenseRecurrencesService pras despesas provisionadas).
-        await CardEntryRecurrenceExpansion.ExpandForTemplateAsync(_db, rec, ct);
+        await CardEntryRecurrenceExpansion.ExpandForTemplateAsync(
+            _db,
+            rec,
+            _businessDate.Today,
+            ct);
         await _db.SaveChangesAsync(ct);
 
         var created = await _db.CardEntryRecurrences

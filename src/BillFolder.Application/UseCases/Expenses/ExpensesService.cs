@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Expenses;
 using BillFolder.Domain.Entities;
@@ -11,17 +12,20 @@ namespace BillFolder.Application.UseCases.Expenses;
 public class ExpensesService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateExpenseRequest> _createValidator;
     private readonly IValidator<UpdateExpenseRequest> _updateValidator;
     private readonly IValidator<RepriceProvisionedExpenseRequest> _repriceValidator;
 
     public ExpensesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateExpenseRequest> createValidator,
         IValidator<UpdateExpenseRequest> updateValidator,
         IValidator<RepriceProvisionedExpenseRequest> repriceValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _repriceValidator = repriceValidator;
@@ -35,7 +39,7 @@ public class ExpensesService
         Guid? categoryId,
         CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var query = _db.Expenses
             .AsNoTracking()
@@ -91,7 +95,7 @@ public class ExpensesService
             return OperationResult.Fail<ExpenseResponse>("not_found", "Despesa não encontrada.");
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(expense, today));
     }
 
@@ -136,7 +140,7 @@ public class ExpensesService
             .Include(e => e.PaidFromAccount)
             .FirstAsync(e => e.Id == expense.Id, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(created, today));
     }
 
@@ -238,7 +242,7 @@ public class ExpensesService
             expense.Status = request.Status.Value;
             if (request.Status.Value == ExpenseStatus.Paid)
             {
-                expense.PaidDate ??= DateOnly.FromDateTime(DateTime.UtcNow.Date);
+                expense.PaidDate ??= _businessDate.Today;
                 expense.ActualAmount ??= expense.ExpectedAmount;
             }
         }
@@ -251,7 +255,7 @@ public class ExpensesService
             .Include(e => e.PaidFromAccount)
             .FirstAsync(e => e.Id == id, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 
@@ -308,7 +312,7 @@ public class ExpensesService
 
         expense.OccurrencesPaid += 1;
         expense.PaidToDate += amount;
-        expense.PaidDate = request.PaidDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        expense.PaidDate = request.PaidDate ?? _businessDate.Today;
 
         // Última ocorrência → despesa quitada.
         if (expense.OccurrencesPaid >= total)
@@ -325,7 +329,7 @@ public class ExpensesService
             .Include(e => e.PaidFromAccount)
             .FirstAsync(e => e.Id == id, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 
@@ -394,7 +398,7 @@ public class ExpensesService
             .Include(e => e.PaidFromAccount)
             .FirstAsync(e => e.Id == id, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 

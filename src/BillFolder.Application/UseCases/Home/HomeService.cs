@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Home;
 using BillFolder.Application.UseCases.Cards;
@@ -12,10 +13,12 @@ namespace BillFolder.Application.UseCases.Home;
 public class HomeService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
 
-    public HomeService(IApplicationDbContext db)
+    public HomeService(IApplicationDbContext db, IBusinessDateProvider businessDate)
     {
         _db = db;
+        _businessDate = businessDate;
     }
 
     /// <summary>
@@ -27,7 +30,7 @@ public class HomeService
         Guid? cycleId,
         CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         // 1. Achar o ciclo
         var cycle = cycleId.HasValue
@@ -98,21 +101,7 @@ public class HomeService
                                          || e.Status == ExpenseStatus.Overdue)),
             Paid: expenses.Count(e => e.Status == ExpenseStatus.Paid));
 
-        var upcomingExpenses = expenses
-            .Where(e => e.Status != ExpenseStatus.Paid)
-            .OrderBy(e => e.DueDate)
-            .Take(5)
-            .Select(e => new HomeUpcomingExpenseDto(
-                e.Id,
-                e.Label,
-                e.DueDate,
-                e.ExpectedAmount,
-                e.ComputeDisplayStatus(today),
-                e.Category.NamePt,
-                e.OccurrencesTotal,
-                e.OccurrencesPaid,
-                e.PaidToDate))
-            .ToList();
+        var expenseCohorts = BuildExpenseCohorts(expenses, today, limit: 5);
 
         // 5. Faturas que vencem no ciclo
         //
@@ -261,7 +250,8 @@ public class HomeService
                 PaidCardStatements: cardStatementBuckets.Paid),
             IncomeBreakdown: incomeBreakdown,
             ExpenseBreakdown: expenseBreakdown,
-            UpcomingExpenses: upcomingExpenses,
+            UpcomingExpenses: expenseCohorts.Upcoming,
+            OverdueExpenses: expenseCohorts.Overdue,
             CardStatementsInCycle: cardStatementsInCycle,
             CategoryBreakdown: categoryBreakdown);
 
@@ -334,6 +324,43 @@ public class HomeService
             .Sum(e => e.PaidToDate);
 
         return (reserved, realized);
+    }
+
+    internal static HomeExpenseCohorts BuildExpenseCohorts(
+        IReadOnlyCollection<Expense> expenses,
+        DateOnly today,
+        int limit)
+    {
+        ArgumentNullException.ThrowIfNull(expenses);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        var projected = expenses
+            .Where(expense => expense.Status != ExpenseStatus.Paid)
+            .Select(expense => new HomeUpcomingExpenseDto(
+                expense.Id,
+                expense.Label,
+                expense.DueDate,
+                expense.ExpectedAmount,
+                expense.ComputeDisplayStatus(today),
+                expense.Category.NamePt,
+                expense.OccurrencesTotal,
+                expense.OccurrencesPaid,
+                expense.PaidToDate))
+            .ToList();
+
+        return new HomeExpenseCohorts(
+            Upcoming: projected
+                .Where(expense => expense.Status != ExpenseStatus.Overdue)
+                .OrderBy(expense => expense.DueDate)
+                .ThenBy(expense => expense.Id)
+                .Take(limit)
+                .ToList(),
+            Overdue: projected
+                .Where(expense => expense.Status == ExpenseStatus.Overdue)
+                .OrderBy(expense => expense.DueDate)
+                .ThenBy(expense => expense.Id)
+                .Take(limit)
+                .ToList());
     }
 
     internal static CardStatementBuckets ComputeCardStatementBuckets(
@@ -424,6 +451,10 @@ internal sealed record HomeStatementFinancialProjection(
     CardStatementStatus Status,
     decimal Total,
     decimal? ActualAmount);
+
+internal sealed record HomeExpenseCohorts(
+    IReadOnlyList<HomeUpcomingExpenseDto> Upcoming,
+    IReadOnlyList<HomeUpcomingExpenseDto> Overdue);
 
 [StructLayout(LayoutKind.Sequential)]
 internal readonly record struct CardStatementBuckets(

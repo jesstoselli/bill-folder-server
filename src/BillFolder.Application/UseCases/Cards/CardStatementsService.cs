@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cards;
 using BillFolder.Domain.Entities;
@@ -11,13 +12,16 @@ namespace BillFolder.Application.UseCases.Cards;
 public class CardStatementsService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<PayCardStatementRequest> _payValidator;
 
     public CardStatementsService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<PayCardStatementRequest> payValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _payValidator = payValidator;
     }
 
@@ -29,7 +33,7 @@ public class CardStatementsService
         DateOnly? to,
         CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var query = _db.CardStatements
             .AsNoTracking()
@@ -111,7 +115,7 @@ public class CardStatementsService
 
         var totalAmount = installments.Sum(i => i.Amount);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         var response = new CardStatementDetailResponse(
             statement.Id,
             statement.CardId,
@@ -173,7 +177,7 @@ public class CardStatementsService
                 accountError, "Conta não existe ou não pertence ao usuário.");
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         var paymentError = PaymentError(statement.Status, statement.PeriodEnd, today);
         if (paymentError is not null)
         {

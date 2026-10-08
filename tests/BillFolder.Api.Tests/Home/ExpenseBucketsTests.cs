@@ -99,4 +99,38 @@ public class ExpenseBucketsTests
         Assert.Equal(400m + 450m, reserved);
         Assert.Equal(200m + 150m, realized);
     }
+
+    [Fact]
+    public void Expense_cohorts_are_bounded_independently_before_home_merges_statements()
+    {
+        var category = new Category { Id = Guid.NewGuid(), Key = "bills", NamePt = "Contas" };
+        var today = new DateOnly(2026, 10, 8);
+        var expenses = Enumerable.Range(1, 6)
+            .Select(index => new Expense
+            {
+                Id = Guid.NewGuid(),
+                Label = $"Atrasada {index}",
+                DueDate = today.AddDays(-index),
+                ExpectedAmount = index,
+                Status = ExpenseStatus.Pending,
+                Category = category,
+            })
+            .Concat(Enumerable.Range(1, 2).Select(index => new Expense
+            {
+                Id = Guid.NewGuid(),
+                Label = $"Próxima {index}",
+                DueDate = today.AddDays(index),
+                ExpectedAmount = index,
+                Status = ExpenseStatus.Pending,
+                Category = category,
+            }))
+            .ToList();
+
+        var cohorts = HomeService.BuildExpenseCohorts(expenses, today, limit: 5);
+
+        Assert.Equal(5, cohorts.Overdue.Count);
+        Assert.Equal(2, cohorts.Upcoming.Count);
+        Assert.All(cohorts.Overdue, expense => Assert.Equal(ExpenseStatus.Overdue, expense.Status));
+        Assert.All(cohorts.Upcoming, expense => Assert.Equal(ExpenseStatus.Pending, expense.Status));
+    }
 }

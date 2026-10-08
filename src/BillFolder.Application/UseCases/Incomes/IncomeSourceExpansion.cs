@@ -35,6 +35,7 @@ public static class IncomeSourceExpansion
     public static async Task ExpandForSourceAsync(
         IApplicationDbContext db,
         IncomeSource source,
+        DateOnly today,
         CancellationToken ct)
     {
         // Só sources ativas materializam entries. IsActive controla se
@@ -48,7 +49,7 @@ public static class IncomeSourceExpansion
         // Range da source (endDate null → hoje + 5 anos como sentinel
         // conservador; ciclos além disso o user cria manualmente e a
         // expansão do CyclesService cuida).
-        var sourceEnd = source.EndDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date).AddYears(5);
+        var sourceEnd = source.EndDate ?? today.AddYears(5);
 
         // Pega todos os ciclos do user cujo range intersecta o da source.
         // Interseção: cycle.EndDate >= source.StartDate && cycle.StartDate <= sourceEnd.

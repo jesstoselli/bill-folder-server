@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Incomes;
 using BillFolder.Domain.Entities;
@@ -11,15 +12,18 @@ namespace BillFolder.Application.UseCases.Incomes;
 public class IncomeEntriesService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateIncomeEntryRequest> _createValidator;
     private readonly IValidator<UpdateIncomeEntryRequest> _updateValidator;
 
     public IncomeEntriesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateIncomeEntryRequest> createValidator,
         IValidator<UpdateIncomeEntryRequest> updateValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
     }
@@ -32,7 +36,7 @@ public class IncomeEntriesService
         Guid? sourceId,
         CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var query = _db.IncomeEntries
             .AsNoTracking()
@@ -89,7 +93,7 @@ public class IncomeEntriesService
             return OperationResult.Fail<IncomeEntryResponse>("not_found", "Entrada de renda não encontrada.");
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(entry, today));
     }
 
@@ -137,7 +141,7 @@ public class IncomeEntriesService
             .Include(e => e.Source)
             .FirstAsync(e => e.Id == entry.Id, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(created, today));
     }
 
@@ -203,7 +207,7 @@ public class IncomeEntriesService
             entry.Status = request.Status.Value;
             if (request.Status.Value == IncomeStatus.Received)
             {
-                entry.ActualDate ??= DateOnly.FromDateTime(DateTime.UtcNow.Date);
+                entry.ActualDate ??= _businessDate.Today;
                 entry.ActualAmount ??= entry.ExpectedAmount;
             }
         }
@@ -215,7 +219,7 @@ public class IncomeEntriesService
             .Include(e => e.Source)
             .FirstAsync(e => e.Id == id, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 
@@ -238,7 +242,7 @@ public class IncomeEntriesService
 
     // ----- helpers -----
 
-    private static IncomeStatus ComputeDisplayStatus(IncomeEntry e, DateOnly today) =>
+    internal static IncomeStatus ComputeDisplayStatus(IncomeEntry e, DateOnly today) =>
         e.Status == IncomeStatus.Expected && e.ExpectedDate < today
             ? IncomeStatus.Late
             : e.Status;

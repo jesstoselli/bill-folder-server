@@ -24,6 +24,7 @@ public static class CardEntryRecurrenceExpansion
     public static async Task ExpandForTemplateAsync(
         IApplicationDbContext db,
         CardEntryRecurrence recurrence,
+        DateOnly today,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(recurrence);
@@ -32,7 +33,7 @@ public static class CardEntryRecurrenceExpansion
             return;
         }
 
-        var end = recurrence.EndDate ?? DateOnly.FromDateTime(DateTime.UtcNow.Date).AddYears(5);
+        var end = recurrence.EndDate ?? today.AddYears(5);
 
         var cycles = await db.Cycles
             .Where(c => c.UserId == recurrence.UserId

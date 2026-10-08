@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cycles;
 using BillFolder.Application.UseCases.Incomes;
@@ -33,15 +34,18 @@ public class CyclesService
     };
 
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateCycleRequest> _createValidator;
     private readonly IValidator<UpdateCycleRequest> _updateValidator;
 
     public CyclesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateCycleRequest> createValidator,
         IValidator<UpdateCycleRequest> updateValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
     }
@@ -52,7 +56,7 @@ public class CyclesService
         DateOnly? to,
         CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var query = _db.Cycles
             .AsNoTracking()
@@ -77,7 +81,7 @@ public class CyclesService
     public async Task<OperationResult<CycleResponse>> GetCurrentAsync(
         Guid userId, CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var current = await _db.Cycles
             .AsNoTracking()
@@ -130,7 +134,7 @@ public class CyclesService
             return OperationResult.Fail<CycleResponse>("not_found", "Ciclo não encontrado.");
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(cycle, today));
     }
 
@@ -191,7 +195,7 @@ public class CyclesService
 
         await _db.SaveChangesAsync(ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(cycle, today));
     }
 
@@ -379,7 +383,7 @@ public class CyclesService
 
         await _db.SaveChangesAsync(ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
         return OperationResult.Ok(MapToResponse(cycle, today));
     }
 
@@ -402,6 +406,9 @@ public class CyclesService
 
     // ----- helpers -----
 
+    internal static bool IsCurrent(Cycle cycle, DateOnly today) =>
+        cycle.StartDate <= today && cycle.EndDate >= today;
+
     private static CycleResponse MapToResponse(Cycle c, DateOnly today) =>
         new(
             c.Id,
@@ -409,7 +416,7 @@ public class CyclesService
             c.EndDate,
             c.Label,
             c.IsRecurrenceGenerated,
-            IsCurrent: c.StartDate <= today && c.EndDate >= today,
+            IsCurrent: IsCurrent(c, today),
             c.CreatedAt,
             c.UpdatedAt);
 }

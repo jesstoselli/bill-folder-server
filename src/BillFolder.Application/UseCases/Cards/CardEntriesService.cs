@@ -1,4 +1,5 @@
 using BillFolder.Application.Abstractions.Persistence;
+using BillFolder.Application.Abstractions.Time;
 using BillFolder.Application.Common;
 using BillFolder.Application.Dtos.Cards;
 using BillFolder.Domain.Entities;
@@ -11,17 +12,20 @@ namespace BillFolder.Application.UseCases.Cards;
 public class CardEntriesService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IBusinessDateProvider _businessDate;
     private readonly IValidator<CreateCardEntryRequest> _createValidator;
     private readonly IValidator<UpdateCardEntryRequest> _updateValidator;
     private readonly IValidator<UpdateCardSubscriptionAmountRequest> _updateAmountValidator;
 
     public CardEntriesService(
         IApplicationDbContext db,
+        IBusinessDateProvider businessDate,
         IValidator<CreateCardEntryRequest> createValidator,
         IValidator<UpdateCardEntryRequest> updateValidator,
         IValidator<UpdateCardSubscriptionAmountRequest> updateAmountValidator)
     {
         _db = db;
+        _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _updateAmountValidator = updateAmountValidator;
@@ -199,7 +203,7 @@ public class CardEntriesService
     public async Task<OperationResult<bool>> DeleteAsync(
         Guid userId, Guid id, RecurrenceScope scope = RecurrenceScope.This, CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var entry = await _db.CardEntries
             .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
@@ -258,7 +262,7 @@ public class CardEntriesService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var today = _businessDate.Today;
 
         var validation = await _updateAmountValidator.ValidateAsync(request, ct);
         if (!validation.IsValid)
