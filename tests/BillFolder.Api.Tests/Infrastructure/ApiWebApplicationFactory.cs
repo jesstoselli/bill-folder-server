@@ -83,9 +83,12 @@ public sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>, I
         builder.ConfigureServices(services =>
         {
             services.AddSingleton<RefreshTokenLookupBarrier>();
+            services.AddSingleton<RefreshTokenInsertBarrier>();
             services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
             {
-                options.AddInterceptors(serviceProvider.GetRequiredService<RefreshTokenLookupBarrier>());
+                options.AddInterceptors(
+                    serviceProvider.GetRequiredService<RefreshTokenLookupBarrier>(),
+                    serviceProvider.GetRequiredService<RefreshTokenInsertBarrier>());
                 options.ConfigureWarnings(warnings =>
                     warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
             });

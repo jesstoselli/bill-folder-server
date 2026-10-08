@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using BillFolder.Application.Abstractions.Persistence;
 using BillFolder.Domain.Entities;
 using BillFolder.Domain.Enums;
@@ -37,6 +38,19 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     {
         var transaction = await Database.BeginTransactionAsync(cancellationToken);
         return new ApplicationDbTransaction(transaction);
+    }
+
+    public Task AcquireRefreshTokenFamilyLockAsync(
+        Guid familyId,
+        CancellationToken cancellationToken = default)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        familyId.TryWriteBytes(bytes);
+        var lockKey = BinaryPrimitives.ReadInt64LittleEndian(bytes);
+
+        return Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

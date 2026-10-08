@@ -129,6 +129,36 @@ public sealed class WebAuthEndpointsTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
+    public async Task WebLogout_ConcurrentWithRefresh_RevokesTheSuccessorCreatedByTheRefresh()
+    {
+        var login = await LoginWebAsync();
+        var predecessorCookie = RefreshCookieFrom(login);
+        var barrier = _factory.Services.GetRequiredService<RefreshTokenInsertBarrier>();
+        barrier.Enable();
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var rotationTask = RefreshWebAsync(predecessorCookie, timeout.Token);
+        await barrier.WaitUntilInsertEnteredAsync(timeout.Token);
+
+        using var logoutRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/auth/web/logout");
+        logoutRequest.Headers.Add("Cookie", predecessorCookie);
+        var logoutTask = _client.SendAsync(logoutRequest, timeout.Token);
+
+        await barrier.WaitUntilContenderEnteredAsync(timeout.Token);
+        barrier.ReleaseInsert();
+
+        var rotation = await rotationTask;
+        var logout = await logoutTask;
+        rotation.StatusCode.Should().Be(HttpStatusCode.OK);
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var successorCookie = RefreshCookieFrom(rotation);
+        var refresh = await RefreshWebAsync(successorCookie, timeout.Token);
+        refresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorAsync(refresh, "invalid_refresh_token");
+    }
+
+    [Fact]
     public async Task WebRefresh_WithoutCookie_ReturnsExistingInvalidRefreshTokenShape()
     {
         var response = await _client.PostAsync("/v1/auth/web/refresh", content: null);

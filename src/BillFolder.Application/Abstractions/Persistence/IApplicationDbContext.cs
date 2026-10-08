@@ -34,6 +34,10 @@ public interface IApplicationDbContext
     Task<IApplicationDbTransaction> BeginTransactionAsync(
         CancellationToken cancellationToken = default);
 
+    Task AcquireRefreshTokenFamilyLockAsync(
+        Guid familyId,
+        CancellationToken cancellationToken = default);
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
 

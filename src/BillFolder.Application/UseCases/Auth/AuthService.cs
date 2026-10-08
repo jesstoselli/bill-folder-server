@@ -178,6 +178,8 @@ public class AuthService
                 "Refresh token inválido, revogado ou expirado.");
         }
 
+        await _db.AcquireRefreshTokenFamilyLockAsync(presentedToken.FamilyId, ct);
+
         var revokedTokens = await _db.RefreshTokens
             .Where(
                 rt => rt.TokenHash == tokenHash
@@ -222,6 +224,8 @@ public class AuthService
         var tokenHash = _jwt.ComputeTokenHash(request.RefreshToken);
         var now = DateTime.UtcNow;
 
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+
         // Um predecessor rotacionado continua identificando a sessão. Isso permite
         // que logout concorrente revogue também qualquer sucessor já emitido.
         var familyId = await _db.RefreshTokens
@@ -232,12 +236,16 @@ public class AuthService
 
         if (familyId.HasValue)
         {
+            await _db.AcquireRefreshTokenFamilyLockAsync(familyId.Value, ct);
+
             await _db.RefreshTokens
                 .Where(rt => rt.FamilyId == familyId.Value && rt.RevokedAt == null)
                 .ExecuteUpdateAsync(
                     setters => setters.SetProperty(rt => rt.RevokedAt, now),
                     ct);
         }
+
+        await transaction.CommitAsync(ct);
 
         return OperationResult.Ok(true);
     }
