@@ -18,7 +18,7 @@ A "cycle" isn't a calendar month. It's the BillFolder cycle — starts on the 5t
 | Web | ASP.NET Core 10 minimal APIs |
 | ORM | EF Core 10 + Npgsql.EntityFrameworkCore.PostgreSQL |
 | Database | PostgreSQL 16 |
-| Auth | JWT Bearer (HS256) + refresh tokens with rotation |
+| Auth | JWT Bearer (HS256) + refresh-token families with rotation |
 | Password hashing | Argon2id (Konscious.Security.Cryptography) |
 | Validation | FluentValidation 12 |
 | Linting | Roslyn analyzers + Meziantou.Analyzer (treat warnings as errors) |
@@ -114,6 +114,17 @@ If you want live reload, use `dotnet watch run` instead — but be aware that ag
 
 All endpoints (except `/v1/auth/*` and `/v1/health`) require `Authorization: Bearer <accessToken>`.
 
+Browser refresh cookies are host-only, `HttpOnly`, `Secure` outside local Development,
+`SameSite=Strict`, and scoped to `/v1/auth/web`. Refresh rotation preserves a family/session ID;
+logging out with any predecessor revokes every active successor in that family. Already-issued access
+JWTs are stateless and therefore remain valid only until the configured short `Jwt:AccessTokenMinutes`
+expiry. The API does not claim immediate revocation of those access JWTs.
+
+Credentialed browser origins are exact. The tracked authenticated origins are
+`https://app.billfolder.app` and `https://preview.billfolder.app`; preview uses
+`https://api.billfolder.app`. Wildcard origins and authenticated `pages.dev` previews are not part of
+the contract.
+
 ### Auth
 
 | Method | Path | Notes |
@@ -154,6 +165,10 @@ All endpoints (except `/v1/auth/*` and `/v1/health`) require `Authorization: Bea
 | Income entries (instance) | `/v1/income-entries` |
 
 Entries have a computed `late` status: stored as `expected`, returned as `late` if `expectedDate < today`. Filter by `?status=late` returns both stored-late and computed-late.
+
+All business-day decisions share `IBusinessDateProvider`, derived from the injected `TimeProvider`
+and configurable `BusinessTime:TimeZoneId` (default `America/Sao_Paulo`). They do not derive civil
+“today” directly from UTC.
 
 ### Expenses
 
@@ -210,6 +225,7 @@ Single endpoint composing the cycle snapshot for the home screen:
   "incomeBreakdown":  { "expected", "received", "late", "notOccurred" },
   "expenseBreakdown": { "pending", "overdue", "paid" },
   "upcomingExpenses": [ /* next 5 unpaid */ ],
+  "overdueExpenses": [ /* 5 oldest overdue, independently bounded */ ],
   "cardStatementsInCycle": [ /* statements due this cycle */ ]
 }
 ```
