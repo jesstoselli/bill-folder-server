@@ -52,6 +52,10 @@ public class UpdateIncomeSourceRequestValidator : AbstractValidator<UpdateIncome
             .NotEqual(default(DateOnly))
             .When(x => x.StartDate.HasValue);
 
+        RuleFor(x => x)
+            .Must(x => !(x.ClearEndDate == true && x.EndDate.HasValue))
+            .WithMessage("Informe a data de fim ou peça para removê-la, não os dois.");
+
         // Cross-field check é feito no service (precisa do start_date existente)
     }
 }

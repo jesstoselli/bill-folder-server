@@ -121,7 +121,7 @@ public class IncomeSourcesService
 
         // Cross-field: end_date >= start_date (calculando contra valores efetivos pós-update)
         var newStart = request.StartDate ?? source.StartDate;
-        var newEnd = request.EndDate ?? source.EndDate;
+        var newEnd = request.ClearEndDate == true ? null : request.EndDate ?? source.EndDate;
         if (newEnd.HasValue && newEnd.Value < newStart)
         {
             return OperationResult.Fail<IncomeSourceResponse>(
@@ -149,7 +149,11 @@ public class IncomeSourcesService
         {
             source.StartDate = request.StartDate.Value;
         }
-        if (request.EndDate.HasValue)
+        if (request.ClearEndDate == true)
+        {
+            source.EndDate = null;
+        }
+        else if (request.EndDate.HasValue)
         {
             source.EndDate = request.EndDate.Value;
         }

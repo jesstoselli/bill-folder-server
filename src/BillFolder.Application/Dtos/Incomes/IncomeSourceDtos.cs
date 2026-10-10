@@ -22,6 +22,11 @@ public sealed record CreateIncomeSourceRequest(
     DateOnly StartDate,
     DateOnly? EndDate);
 
+/// <summary>
+/// Partial update: a null field keeps its current value. Since a null
+/// <see cref="EndDate"/> therefore means "unchanged", removing the end date
+/// takes an explicit <see cref="ClearEndDate"/> = true.
+/// </summary>
 public sealed record UpdateIncomeSourceRequest(
     string? Origin,
     IncomeOriginType? OriginType,
@@ -29,4 +34,5 @@ public sealed record UpdateIncomeSourceRequest(
     short? ExpectedDay,
     DateOnly? StartDate,
     DateOnly? EndDate,
-    bool? IsActive);
+    bool? IsActive,
+    bool? ClearEndDate = null);

@@ -179,6 +179,8 @@ and configurable `BusinessTime:TimeZoneId` (default `America/Sao_Paulo`). They d
 | Expenses | `/v1/expenses` |
 | Expense recurrences (template) | `/v1/expense-recurrences` |
 
+`PATCH /v1/income-sources/{id}` is partial (a `null` field is left unchanged), so removing a source's end date takes `"clearEndDate": true`; sending it together with `endDate` is a validation error.
+
 `/v1/expenses` has a computed `overdue` status (same pattern as income's `late`) and an auto-fill convenience: `PATCH` with `status=paid` automatically fills `paid_date=today` and `actual_amount=expected_amount` when not provided.
 
 ### Cards
