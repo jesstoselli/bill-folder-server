@@ -142,6 +142,8 @@ public class CheckingAccountsService
     public async Task<OperationResult<bool>> DeleteAsync(
         Guid userId, Guid accountId, CancellationToken ct = default)
     {
+        await using var transaction = await _db.BeginTransactionAsync(ct);
+
         var account = await _db.CheckingAccounts
             .FirstOrDefaultAsync(a => a.Id == accountId && a.UserId == userId, ct);
 
@@ -150,8 +152,25 @@ public class CheckingAccountsService
             return OperationResult.Fail<bool>("not_found", "Conta não encontrada.");
         }
 
+        var inUse = await _db.SavingsAccounts.AnyAsync(
+                a => a.UserId == userId && a.CheckingAccountId == accountId,
+                ct)
+            || await _db.DailyExpenses.AnyAsync(
+                e => e.UserId == userId && e.AccountId == accountId,
+                ct)
+            || await _db.DailyExpenseRecurrences.AnyAsync(
+                r => r.UserId == userId && r.DefaultAccountId == accountId,
+                ct);
+        if (inUse)
+        {
+            return OperationResult.Fail<bool>(
+                "account_in_use",
+                "Esta conta ainda está vinculada a uma poupança ou despesa avulsa. Remova ou altere esses vínculos antes de excluir.");
+        }
+
         _db.CheckingAccounts.Remove(account);
         await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         return OperationResult.Ok(true);
     }

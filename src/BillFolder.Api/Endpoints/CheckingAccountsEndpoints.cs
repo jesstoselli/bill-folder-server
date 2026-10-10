@@ -102,6 +102,7 @@ public static class CheckingAccountsEndpoints
         {
             "validation_error" => StatusCodes.Status400BadRequest,
             "not_found"        => StatusCodes.Status404NotFound,
+            "account_in_use"   => StatusCodes.Status409Conflict,
             _                  => StatusCodes.Status400BadRequest,
         };
 
