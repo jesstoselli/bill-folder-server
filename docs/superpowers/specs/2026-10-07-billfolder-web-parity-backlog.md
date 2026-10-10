@@ -1,6 +1,6 @@
 # BillFolder Web — Backlog delimitado de paridade
 
-**Data:** 2026-10-08  
+**Data:** 2026-10-10
 **Status:** semente de design aprovada para priorização futura; não é plano de implementação  
 **Base:** BillFolder Web MVP verificado localmente
 
@@ -29,6 +29,14 @@ Essa ordem expressa dependências de produto. Não obriga que módulos do mesmo 
 no mesmo lote ou em paralelo.
 
 ## 3. Módulos de paridade
+
+| Módulo | Infraestrutura/API | UI administrativa web |
+| --- | --- | --- |
+| Ciclos | pronta | entregue em 2026-10-10 |
+| Contas-correntes | pronta | entregue em 2026-10-10 |
+| Contas de cartão | pronta | pendente |
+| Contas de poupança | pronta | pendente |
+| Fontes de renda | pronta | pendente |
 
 ### 3.1 Ciclos
 
