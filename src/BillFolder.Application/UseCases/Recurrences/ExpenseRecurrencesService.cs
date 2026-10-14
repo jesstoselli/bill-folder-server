@@ -101,8 +101,8 @@ public class ExpenseRecurrencesService
         _db.ExpenseRecurrences.Add(rec);
         await _db.SaveChangesAsync(ct);
 
-        // Template Weekly → materializa a despesa provisionada nos ciclos
-        // existentes que ele cobre (espelha IncomeSourcesService). No-op pra Monthly.
+        // Materializa as despesas nos ciclos existentes que o template cobre,
+        // a partir do StartDate (espelha IncomeSourcesService).
         await ExpenseRecurrenceExpansion.ExpandForTemplateAsync(
             _db,
             rec,

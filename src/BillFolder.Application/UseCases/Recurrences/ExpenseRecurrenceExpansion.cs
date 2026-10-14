@@ -19,6 +19,10 @@ namespace BillFolder.Application.UseCases.Recurrences;
 ///
 /// Idempotente por (UserId, TemplateId, DueDate). Só ADICIONA ao change tracker;
 /// SaveChangesAsync é do caller.
+///
+/// Monthly materializa a partir do StartDate, mesmo que o vencimento já tenha
+/// passado: um início no passado é o usuário dizendo que quer essas contas.
+/// Com o início padrão (hoje), nada anterior a hoje é criado.
 /// </summary>
 public static class ExpenseRecurrenceExpansion
 {
@@ -42,11 +46,9 @@ public static class ExpenseRecurrenceExpansion
                      && c.StartDate <= end)
             .ToListAsync(ct);
 
-        // notBefore = hoje: na criação, Monthly não gera ocorrência já vencida
-        // (não-retroativa). Weekly ignora notBefore.
         foreach (var cycle in cycles)
         {
-            await MaterializeAsync(db, recurrence, cycle, today, ct);
+            await MaterializeAsync(db, recurrence, cycle, ct);
         }
     }
 
@@ -64,24 +66,16 @@ public static class ExpenseRecurrenceExpansion
                      && (r.EndDate == null || r.EndDate >= cycle.StartDate))
             .ToListAsync(ct);
 
-        // Rollover: notBefore null → gera o ciclo novo mesmo se já venceu (a
-        // recorrência é anterior ao ciclo, não é retroativo).
         foreach (var recurrence in recurrences)
         {
-            await MaterializeAsync(db, recurrence, cycle, notBefore: null, ct);
+            await MaterializeAsync(db, recurrence, cycle, ct);
         }
     }
-
-    /// <summary>Monthly não-retroativa: null sempre gera; caso contrário só se
-    /// o vencimento não passou (dueDate &gt;= notBefore). Puro/determinístico.</summary>
-    internal static bool ShouldMaterializeMonthly(DateOnly dueDate, DateOnly? notBefore)
-        => notBefore is null || dueDate >= notBefore;
 
     private static async Task MaterializeAsync(
         IApplicationDbContext db,
         ExpenseRecurrence recurrence,
         Cycle cycle,
-        DateOnly? notBefore,
         CancellationToken ct)
     {
         var effectiveStart = cycle.StartDate > recurrence.StartDate ? cycle.StartDate : recurrence.StartDate;
@@ -95,7 +89,7 @@ public static class ExpenseRecurrenceExpansion
 
         if (recurrence.Frequency == ExpenseRecurrenceFrequency.Monthly)
         {
-            await MaterializeMonthlyAsync(db, recurrence, effectiveStart, effectiveEnd, notBefore, ct);
+            await MaterializeMonthlyAsync(db, recurrence, effectiveStart, effectiveEnd, ct);
         }
         else
         {
@@ -146,23 +140,17 @@ public static class ExpenseRecurrenceExpansion
         });
     }
 
-    // Monthly → despesa comum, 1 por ciclo, no DueDay (não-retroativa na criação).
+    // Monthly → despesa comum, 1 por ciclo, no DueDay.
     private static async Task MaterializeMonthlyAsync(
         IApplicationDbContext db,
         ExpenseRecurrence recurrence,
         DateOnly effectiveStart,
         DateOnly effectiveEnd,
-        DateOnly? notBefore,
         CancellationToken ct)
     {
         if (RecurrenceDates.MonthlyDateInRange(effectiveStart, effectiveEnd, recurrence.DueDay ?? 1) is not { } dueDate)
         {
             return; // o dia do mês não cai nesse ciclo
-        }
-
-        if (!ShouldMaterializeMonthly(dueDate, notBefore))
-        {
-            return;
         }
 
         if (await ExistsAsync(db, recurrence, dueDate, ct))

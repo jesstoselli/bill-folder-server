@@ -1,7 +1,6 @@
 using BillFolder.Application.UseCases.Cards;
 using BillFolder.Application.UseCases.Cycles;
 using BillFolder.Application.UseCases.Incomes;
-using BillFolder.Application.UseCases.Recurrences;
 using BillFolder.Domain.Entities;
 using BillFolder.Domain.Enums;
 using BillFolder.Infrastructure.Time;
@@ -23,15 +22,14 @@ public sealed class BusinessCivilDateTests
     }
 
     [Theory]
-    [InlineData("2026-10-08T02:59:59Z", ExpenseStatus.Pending, IncomeStatus.Expected, CardStatementStatus.Open, true, true)]
-    [InlineData("2026-10-08T03:00:00Z", ExpenseStatus.Overdue, IncomeStatus.Late, CardStatementStatus.Closed, false, false)]
-    public void CivilToday_DrivesExpenseIncomeCardCycleAndRecurrenceBoundaries(
+    [InlineData("2026-10-08T02:59:59Z", ExpenseStatus.Pending, IncomeStatus.Expected, CardStatementStatus.Open, true)]
+    [InlineData("2026-10-08T03:00:00Z", ExpenseStatus.Overdue, IncomeStatus.Late, CardStatementStatus.Closed, false)]
+    public void CivilToday_DrivesExpenseIncomeCardAndCycleBoundaries(
         string utcInstant,
         ExpenseStatus expectedExpense,
         IncomeStatus expectedIncome,
         CardStatementStatus expectedStatement,
-        bool expectedPreviousCycleCurrent,
-        bool expectedMonthlyMaterialization)
+        bool expectedPreviousCycleCurrent)
     {
         var today = CreateProvider(utcInstant).Today;
         var expense = new Expense
@@ -59,11 +57,6 @@ public sealed class BusinessCivilDateTests
                 new DateOnly(2026, 10, 8),
                 today));
         Assert.Equal(expectedPreviousCycleCurrent, CyclesService.IsCurrent(previousCycle, today));
-        Assert.Equal(
-            expectedMonthlyMaterialization,
-            ExpenseRecurrenceExpansion.ShouldMaterializeMonthly(
-                new DateOnly(2026, 10, 7),
-                today));
     }
 
     private static BusinessDateProvider CreateProvider(string utcInstant) =>
