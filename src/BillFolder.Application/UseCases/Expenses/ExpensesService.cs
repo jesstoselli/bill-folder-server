@@ -16,19 +16,22 @@ public class ExpensesService
     private readonly IValidator<CreateExpenseRequest> _createValidator;
     private readonly IValidator<UpdateExpenseRequest> _updateValidator;
     private readonly IValidator<RepriceProvisionedExpenseRequest> _repriceValidator;
+    private readonly IValidator<UpdateOccurrencesRequest> _occurrencesValidator;
 
     public ExpensesService(
         IApplicationDbContext db,
         IBusinessDateProvider businessDate,
         IValidator<CreateExpenseRequest> createValidator,
         IValidator<UpdateExpenseRequest> updateValidator,
-        IValidator<RepriceProvisionedExpenseRequest> repriceValidator)
+        IValidator<RepriceProvisionedExpenseRequest> repriceValidator,
+        IValidator<UpdateOccurrencesRequest> occurrencesValidator)
     {
         _db = db;
         _businessDate = businessDate;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _repriceValidator = repriceValidator;
+        _occurrencesValidator = occurrencesValidator;
     }
 
     public async Task<List<ExpenseResponse>> ListAsync(
@@ -402,6 +405,56 @@ public class ExpensesService
         return OperationResult.Ok(MapToResponse(updated, today));
     }
 
+    /// <summary>
+    /// Muda quantas sessões uma despesa provisionada tem neste ciclo. Só esta
+    /// despesa: a recorrência e os outros ciclos ficam como estão. Não aceita
+    /// menos sessões do que as já pagas.
+    /// </summary>
+    public async Task<OperationResult<ExpenseResponse>> UpdateOccurrencesAsync(
+        Guid userId, Guid id, UpdateOccurrencesRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await _occurrencesValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "validation_error", validation.Errors[0].ErrorMessage);
+        }
+
+        var expense = await _db.Expenses
+            .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
+
+        if (expense is null)
+        {
+            return OperationResult.Fail<ExpenseResponse>("not_found", "Despesa não encontrada.");
+        }
+
+        if (expense.OccurrencesTotal is null)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "not_provisioned", "Despesa não é provisionada (sem ocorrências).");
+        }
+
+        if (request.OccurrencesTotal < expense.OccurrencesPaid)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "below_paid",
+                $"Já foram pagas {expense.OccurrencesPaid} sessões; o total não pode ser menor.");
+        }
+
+        ApplyOccurrencesTotal(expense, request.OccurrencesTotal);
+        await _db.SaveChangesAsync(ct);
+
+        var updated = await _db.Expenses
+            .AsNoTracking()
+            .Include(e => e.Category)
+            .Include(e => e.PaidFromAccount)
+            .FirstAsync(e => e.Id == id, ct);
+
+        return OperationResult.Ok(MapToResponse(updated, _businessDate.Today));
+    }
+
     public async Task<OperationResult<bool>> DeleteAsync(
         Guid userId, Guid id, RecurrenceScope scope = RecurrenceScope.This, CancellationToken ct = default)
     {
@@ -502,6 +555,30 @@ public class ExpensesService
         ArgumentNullException.ThrowIfNull(occurrence);
         occurrence.OccurrenceAmount = amount;
         occurrence.ExpectedAmount = amount * (occurrence.OccurrencesTotal ?? 1);
+    }
+
+    /// <summary>
+    /// Novo nº de sessões do ciclo: o total recalcula = valor por sessão ×
+    /// sessões, e a situação acompanha — quitada quando as pagas alcançam o
+    /// total (como na última baixa), pendente de novo quando ganha sessão extra.
+    /// Puro (sem DB) — testado.
+    /// </summary>
+    internal static void ApplyOccurrencesTotal(Expense expense, int total)
+    {
+        ArgumentNullException.ThrowIfNull(expense);
+        expense.OccurrencesTotal = total;
+        expense.ExpectedAmount = (expense.OccurrenceAmount ?? 0m) * total;
+
+        if (expense.OccurrencesPaid >= total)
+        {
+            expense.Status = ExpenseStatus.Paid;
+            expense.ActualAmount = expense.PaidToDate;
+        }
+        else if (expense.Status == ExpenseStatus.Paid)
+        {
+            expense.Status = ExpenseStatus.Pending;
+            expense.ActualAmount = null;
+        }
     }
 
     private static string? NormalizeOptional(string? value)

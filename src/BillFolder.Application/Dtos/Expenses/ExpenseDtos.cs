@@ -41,6 +41,11 @@ public sealed record RepriceProvisionedExpenseRequest(
     decimal Amount,
     RecurrenceScope Scope);
 
+/// <summary>Body do POST /v1/expenses/{id}/update-occurrences — muda quantas
+/// sessões uma despesa provisionada tem NESTE ciclo (férias, sessão extra). O
+/// total recalcula = valor por sessão × sessões; a recorrência não muda.</summary>
+public sealed record UpdateOccurrencesRequest(int OccurrencesTotal);
+
 public sealed record CreateExpenseRequest(
     DateOnly DueDate,
     string Label,

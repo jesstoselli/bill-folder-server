@@ -128,6 +128,22 @@ public static class ExpensesEndpoints
             return ToHttpResult(result);
         });
 
+        // Muda quantas sessões a despesa provisionada tem neste ciclo.
+        group.MapPost("/{id:guid}/update-occurrences", async (
+            Guid id,
+            UpdateOccurrencesRequest request,
+            ClaimsPrincipal principal,
+            ExpensesService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            var result = await service.UpdateOccurrencesAsync(userId, id, request, ct);
+            return ToHttpResult(result);
+        });
+
         group.MapDelete("/{id:guid}", async (
             Guid id,
             string? scope,

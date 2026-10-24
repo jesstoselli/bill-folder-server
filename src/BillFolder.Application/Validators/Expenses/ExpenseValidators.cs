@@ -40,6 +40,17 @@ public class RepriceProvisionedExpenseRequestValidator
     }
 }
 
+public class UpdateOccurrencesRequestValidator : AbstractValidator<UpdateOccurrencesRequest>
+{
+    public UpdateOccurrencesRequestValidator()
+    {
+        // Um ciclo mensal tem no máximo 5 semanas; 10 dá folga pra sessões extras.
+        RuleFor(x => x.OccurrencesTotal)
+            .InclusiveBetween(1, 10)
+            .WithMessage("Informe de 1 a 10 sessões. Pra pular o mês, exclua só esta despesa.");
+    }
+}
+
 public class UpdateExpenseRequestValidator : AbstractValidator<UpdateExpenseRequest>
 {
     public UpdateExpenseRequestValidator()
