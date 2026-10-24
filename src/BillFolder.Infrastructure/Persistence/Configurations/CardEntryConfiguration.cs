@@ -10,7 +10,8 @@ public class CardEntryConfiguration : IEntityTypeConfiguration<CardEntry>
     {
         builder.ToTable("card_entries", t =>
         {
-            t.HasCheckConstraint("ck_total_amount_nonneg", "total_amount >= 0");
+            // Negativo só como estorno, que é sempre à vista.
+            t.HasCheckConstraint("ck_total_amount_refund_single", "total_amount >= 0 OR installments_count = 1");
             t.HasCheckConstraint("ck_installments_count_min1", "installments_count >= 1");
         });
         builder.HasKey(x => x.Id);

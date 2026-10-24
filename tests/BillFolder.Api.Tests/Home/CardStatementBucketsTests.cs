@@ -30,4 +30,16 @@ public class CardStatementBucketsTests
         Assert.Equal(790m, result.Paid);
         Assert.Equal(790m, result.TotalCommitted);
     }
+
+    [Fact]
+    public void Statement_left_with_credit_does_not_reserve_negative_money()
+    {
+        var result = HomeService.ComputeCardStatementBuckets(new[]
+        {
+            new HomeStatementFinancialProjection(CardStatementStatus.Closed, 800m, null),
+            new HomeStatementFinancialProjection(CardStatementStatus.Closed, -50m, null),
+        });
+
+        Assert.Equal(800m, result.Expected);
+    }
 }

@@ -19,9 +19,15 @@ public class CreateCardEntryRequestValidator : AbstractValidator<CreateCardEntry
             .NotEmpty().WithMessage("Descrição é obrigatória.")
             .MaximumLength(200);
 
+        // Negativo é estorno: crédito no cartão, sempre à vista.
         RuleFor(x => x.TotalAmount)
-            .GreaterThan(0)
-            .WithMessage("Valor total deve ser maior que zero.");
+            .NotEqual(0)
+            .WithMessage("Valor total não pode ser zero.");
+
+        RuleFor(x => x.InstallmentsCount)
+            .Equal((short)1)
+            .When(x => x.TotalAmount < 0)
+            .WithMessage("Estorno é sempre à vista (1 parcela).");
 
         RuleFor(x => x.InstallmentsCount)
             .InclusiveBetween((short)1, (short)36)

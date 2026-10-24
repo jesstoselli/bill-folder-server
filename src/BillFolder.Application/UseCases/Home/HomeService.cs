@@ -368,9 +368,11 @@ public class HomeService
     {
         ArgumentNullException.ThrowIfNull(statements);
 
+        // Fatura zerada por estorno, ou com crédito, não reserva nada — o
+        // crédito não vira dinheiro disponível no ciclo.
         var expected = statements
             .Where(s => s.Status != CardStatementStatus.Paid)
-            .Sum(s => s.Total);
+            .Sum(s => Math.Max(0m, s.Total));
 
         var paid = statements
             .Where(s => s.Status == CardStatementStatus.Paid)
@@ -424,7 +426,10 @@ public class HomeService
             Add(Guid.Empty, "ajustes", "Ajustes", adjustmentsOutflows);
         }
 
+        // Estornos no cartão descontam da categoria; se ela zerar (ou ficar
+        // negativa), some do gráfico.
         return aggregator
+            .Where(kv => kv.Value.Sum > 0m)
             .Select(kv => new HomeCategoryBreakdownDto(
                 CategoryId: kv.Key,
                 CategoryKey: kv.Value.Key,

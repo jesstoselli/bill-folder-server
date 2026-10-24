@@ -69,4 +69,24 @@ public sealed class CategoryBreakdownTests
         result.Should().NotContain(c => c.CategoryName == "Ajustes");
         result.Should().HaveCount(1);
     }
+
+    [Fact]
+    public void CardRefund_ReducesItsCategory_AndACategoryLeftAtZeroOrBelowDisappears()
+    {
+        var shoes = Guid.NewGuid();
+        var cardSlices = new List<HomeStatementCategoryProjection>
+        {
+            new(300m, shoes, "clothing", "Vestuário"),
+            new(-100m, shoes, "clothing", "Vestuário"),
+            new(50m, CategoryId, "food", "Alimentação"),
+            new(-80m, CategoryId, "food", "Alimentação"),
+        };
+
+        var result = HomeService.BuildCategoryBreakdown(
+            new List<Expense>(), new List<DailyExpense>(), cardSlices, adjustmentsOutflows: 0m);
+
+        result.Should().ContainSingle();
+        result[0].CategoryName.Should().Be("Vestuário");
+        result[0].Amount.Should().Be(200m);
+    }
 }

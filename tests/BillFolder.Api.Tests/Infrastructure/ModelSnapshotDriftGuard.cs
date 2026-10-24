@@ -11,9 +11,10 @@ namespace BillFolder.Api.Tests.Infrastructure;
 public static class ModelSnapshotDriftGuard
 {
     // Reviewed drift: manual SQL migrations for password reset, provisioned
-    // expenses and refresh-token families, plus documented Npgsql enum churn.
+    // expenses, refresh-token families and card refunds, plus documented
+    // Npgsql enum churn.
     private const string AcceptedBaselineFingerprint =
-        "22:0F92CEA40AA6572E31A0172FD02D7A1C240422AFBE302922A762E6A822750B12";
+        "24:FA0859C96870865D9D354BC2F2462583FA43336024A2F31698374C0514D40A46";
 
     public static void EnsureOnlyAcceptedBaseline(ApplicationDbContext db)
     {

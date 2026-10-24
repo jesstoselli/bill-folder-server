@@ -199,6 +199,8 @@ For a provisioned (weekly) expense, `POST /v1/expenses/{id}/update-occurrences` 
 3. Creates the statements that don't exist yet.
 4. Persists the entry, statements, and installments atomically.
 
+A negative `totalAmount` is a refund (estorno): a credit on the card, always a single installment, that lowers the statement it falls in. A statement whose refunds cover its purchases has nothing to pay (`nothing_to_pay`), and its credit is not counted as available money on the Home. Applying it in prod needs `db/migrations/20261024120000_AllowCardRefunds.sql`.
+
 `/v1/card-statements` is read + status update only. Statements are system-managed via the card-entries flow.
 
 ### Savings

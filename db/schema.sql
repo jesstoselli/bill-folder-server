@@ -328,8 +328,10 @@ CREATE TABLE card_entries (
     template_id         UUID             REFERENCES card_entry_recurrences(id) ON DELETE SET NULL,
     purchase_date       DATE             NOT NULL,
     label               TEXT             NOT NULL,
-    total_amount        NUMERIC(12,2)    NOT NULL CHECK (total_amount >= 0),
+    total_amount        NUMERIC(12,2)    NOT NULL,
     installments_count  SMALLINT         NOT NULL CHECK (installments_count >= 1),
+    -- Negativo é estorno (crédito no cartão), sempre à vista.
+    CONSTRAINT ck_total_amount_refund_single CHECK (total_amount >= 0 OR installments_count = 1),
     category_id         UUID             NOT NULL REFERENCES categories(id),
     notes               TEXT,
     created_at          TIMESTAMPTZ      NOT NULL DEFAULT NOW(),

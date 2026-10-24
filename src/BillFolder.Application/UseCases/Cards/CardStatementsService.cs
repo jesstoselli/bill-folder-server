@@ -187,6 +187,12 @@ public class CardStatementsService
             return OperationResult.Fail<CardStatementResponse>(paymentError, message);
         }
 
+        if (statement.Installments.Sum(i => i.Amount) <= 0m)
+        {
+            return OperationResult.Fail<CardStatementResponse>(
+                "nothing_to_pay", "Fatura sem valor a pagar: os estornos cobrem as compras.");
+        }
+
         ApplyPayment(statement, request);
 
         await _db.SaveChangesAsync(ct);
