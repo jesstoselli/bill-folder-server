@@ -78,6 +78,20 @@ public static class CardStatementsEndpoints
             return ToHttpResult(result);
         });
 
+        // Desfaz o pagamento de uma fatura confirmado por engano.
+        group.MapPost("/{id:guid}/unpay", async (
+            Guid id,
+            ClaimsPrincipal principal,
+            CardStatementsService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            return ToHttpResult(await service.UndoPaymentAsync(userId, id, ct));
+        });
+
         return app;
     }
 

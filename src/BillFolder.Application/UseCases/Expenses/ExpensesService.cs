@@ -406,6 +406,56 @@ public class ExpensesService
     }
 
     /// <summary>
+    /// Desfaz um pagamento confirmado por engano: volta pra pendente (ou
+    /// atrasada, se já venceu) e apaga data, valor e conta do pagamento.
+    /// Provisionada não entra — ela é quitada sessão a sessão.
+    /// </summary>
+    public async Task<OperationResult<ExpenseResponse>> UndoPaymentAsync(
+        Guid userId, Guid id, CancellationToken ct = default)
+    {
+        var expense = await _db.Expenses
+            .FirstOrDefaultAsync(e => e.Id == id && e.UserId == userId, ct);
+
+        if (expense is null)
+        {
+            return OperationResult.Fail<ExpenseResponse>("not_found", "Despesa não encontrada.");
+        }
+
+        if (expense.OccurrencesTotal is not null)
+        {
+            return OperationResult.Fail<ExpenseResponse>(
+                "provisioned_expense",
+                "Despesa provisionada é quitada por sessão; o pagamento não pode ser desfeito.");
+        }
+
+        if (expense.Status != ExpenseStatus.Paid)
+        {
+            return OperationResult.Fail<ExpenseResponse>("not_paid", "Despesa não está paga.");
+        }
+
+        ClearPayment(expense);
+        await _db.SaveChangesAsync(ct);
+
+        var updated = await _db.Expenses
+            .AsNoTracking()
+            .Include(e => e.Category)
+            .Include(e => e.PaidFromAccount)
+            .FirstAsync(e => e.Id == id, ct);
+
+        return OperationResult.Ok(MapToResponse(updated, _businessDate.Today));
+    }
+
+    /// <summary>Volta a despesa pra pendente sem rastro do pagamento. Puro.</summary>
+    internal static void ClearPayment(Expense expense)
+    {
+        ArgumentNullException.ThrowIfNull(expense);
+        expense.Status = ExpenseStatus.Pending;
+        expense.PaidDate = null;
+        expense.ActualAmount = null;
+        expense.PaidFromAccountId = null;
+    }
+
+    /// <summary>
     /// Muda quantas sessões uma despesa provisionada tem neste ciclo. Só esta
     /// despesa: a recorrência e os outros ciclos ficam como estão. Não aceita
     /// menos sessões do que as já pagas.

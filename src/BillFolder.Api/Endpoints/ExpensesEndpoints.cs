@@ -128,6 +128,20 @@ public static class ExpensesEndpoints
             return ToHttpResult(result);
         });
 
+        // Desfaz um pagamento confirmado por engano.
+        group.MapPost("/{id:guid}/unpay", async (
+            Guid id,
+            ClaimsPrincipal principal,
+            ExpensesService service,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+            {
+                return Results.Unauthorized();
+            }
+            return ToHttpResult(await service.UndoPaymentAsync(userId, id, ct));
+        });
+
         // Muda quantas sessões a despesa provisionada tem neste ciclo.
         group.MapPost("/{id:guid}/update-occurrences", async (
             Guid id,

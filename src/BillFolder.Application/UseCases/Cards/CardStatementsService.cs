@@ -216,6 +216,56 @@ public class CardStatementsService
             _ => null,
         };
 
+    /// <summary>
+    /// Desfaz o pagamento de uma fatura: ela volta a aceitar pagamento (fechada,
+    /// pela data) e perde data, valor e conta do pagamento.
+    /// </summary>
+    public async Task<OperationResult<CardStatementResponse>> UndoPaymentAsync(
+        Guid userId, Guid id, CancellationToken ct = default)
+    {
+        var statement = await _db.CardStatements
+            .Include(s => s.Card)
+            .Include(s => s.Installments)
+            .Include(s => s.PaidFromAccount)
+            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId, ct);
+
+        if (statement is null)
+        {
+            return OperationResult.Fail<CardStatementResponse>("not_found", "Fatura não encontrada.");
+        }
+
+        if (statement.Status != CardStatementStatus.Paid)
+        {
+            return OperationResult.Fail<CardStatementResponse>(
+                "statement_not_paid", "Fatura não está paga.");
+        }
+
+        ClearPayment(statement);
+        await _db.SaveChangesAsync(ct);
+
+        var reopened = await _db.CardStatements
+            .AsNoTracking()
+            .Include(s => s.Card)
+            .Include(s => s.Installments)
+            .Include(s => s.PaidFromAccount)
+            .FirstAsync(s => s.Id == statement.Id, ct);
+
+        return OperationResult.Ok(MapToResponse(reopened, _businessDate.Today));
+    }
+
+    /// <summary>
+    /// Sem pagamento. O status guardado volta a Open; o efetivo (fechada ou
+    /// aberta) sai da data de fechamento, como antes de pagar.
+    /// </summary>
+    internal static void ClearPayment(CardStatement statement)
+    {
+        ArgumentNullException.ThrowIfNull(statement);
+        statement.Status = CardStatementStatus.Open;
+        statement.PaidDate = null;
+        statement.ActualAmount = null;
+        statement.PaidFromAccountId = null;
+    }
+
     internal static string? AccountError(
         Guid userId, Guid? requestedAccountId, Guid? accountOwnerId) =>
         !requestedAccountId.HasValue

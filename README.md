@@ -185,6 +185,8 @@ and configurable `BusinessTime:TimeZoneId` (default `America/Sao_Paulo`). They d
 
 For a provisioned (weekly) expense, `POST /v1/expenses/{id}/update-occurrences` with `{ "occurrencesTotal": n }` changes how many sessions that one cycle has (a therapist's holiday, an extra session). The total becomes the per-session amount × n, the recurrence and other cycles are untouched, and n can't go below the sessions already paid.
 
+`POST /v1/expenses/{id}/unpay` and `POST /v1/card-statements/{id}/unpay` undo a payment confirmed by mistake: the expense goes back to pending (or overdue) and the statement back to payable, with paid date, amount and account cleared. Provisioned expenses are settled per session and can't be undone this way.
+
 ### Cards
 
 | Resource | Path |
